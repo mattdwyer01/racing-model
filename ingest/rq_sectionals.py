@@ -102,7 +102,7 @@ def parse_race_xml(data: bytes, source: str) -> tuple[list[dict], list[dict]]:
         track_config=r.findtext("TrackName"),
         going=r.findtext("TrackCondition"),
         rail_text=r.findtext("RailPosition"),
-        race_time_s=_secs((r.find("FinishTime") or {}).get("Time") if r.find("FinishTime") is not None else None),
+        race_time_s=_secs(ft.get("Time") if (ft := r.find("FinishTime")) is not None else None),
     )
     m = re.search(r"_R(\d+)\.xml$", source)
     race["race_no"] = int(m.group(1)) if m else None
@@ -151,16 +151,23 @@ def parse_all() -> tuple[pd.DataFrame, pd.DataFrame]:
     runs, secs = [], []
     for z in sorted(ZIP_DIR.glob("*.zip")):
         try:
-            with zipfile.ZipFile(z) as zf:
-                for n in zf.namelist():
-                    if n.lower().endswith(".xml"):
-                        a, b = parse_race_xml(zf.read(n), n)
-                        for r in a:
-                            r["zip_file"] = z.name
-                        runs += a
-                        secs += b
+            zf = zipfile.ZipFile(z)
         except Exception as e:
             print(f"  {z.name}: {type(e).__name__}: {e}")
+            continue
+        with zf:
+            for n in zf.namelist():
+                if not n.lower().endswith(".xml"):
+                    continue
+                try:  # one bad race XML must not drop the rest of the meeting
+                    a, b = parse_race_xml(zf.read(n), n)
+                except Exception as e:
+                    print(f"  {z.name}/{n}: {type(e).__name__}: {e}")
+                    continue
+                for r in a:
+                    r["zip_file"] = z.name
+                runs += a
+                secs += b
     runs, secs = pd.DataFrame(runs), pd.DataFrame(secs)
     # scratched / non-tracked horses carry all-zero sections: blank them
     if not secs.empty:
