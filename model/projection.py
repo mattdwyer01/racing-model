@@ -304,10 +304,21 @@ def td_barrier(x):
 
 # ---------------------------------------------------------------- models
 
+class _Model:
+    """LightGBM regressor on inputs rounded to 1e-6, so float noise far below any real difference
+    (e.g. 1e-14 from upstream fits) cannot move a value across a bin edge and change the trees."""
+
+    def __init__(self, X, y):
+        cat = [i for i, c in enumerate(X.columns) if c == "track_code"]
+        self.m = lgb.train(dict(PARAMS, cat_smooth=20, max_cat_to_onehot=4),
+                           lgb.Dataset(X.round(6).to_numpy(float), y.to_numpy(float), categorical_feature=cat), ROUNDS)
+
+    def predict(self, X):
+        return self.m.predict(np.round(np.asarray(X, dtype=float), 6))
+
+
 def _fit(X, y):
-    cat = [i for i, c in enumerate(X.columns) if c == "track_code"]
-    return lgb.train(dict(PARAMS, cat_smooth=20, max_cat_to_onehot=4),
-                     lgb.Dataset(X.to_numpy(float), y.to_numpy(float), categorical_feature=cat), ROUNDS)
+    return _Model(X, y)
 
 
 def _pace_frame(x):
