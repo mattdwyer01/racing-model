@@ -147,6 +147,7 @@ from live_runners where run_id is not null;
 
 
 def build(db=DB):
+    Path(db).parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(db))
     con.execute(SQL)
     if LIVE.exists():

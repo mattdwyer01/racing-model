@@ -13,7 +13,8 @@ Horse rating and win-probability model for VIC, SA and QLD thoroughbred racing.
 ## Build
 ```
 pip install -r requirements.txt
-python ingest/build_core.py        # raw TopRate files -> data/db/racing.duckdb
+python pipeline/bootstrap.py       # pull raw files from the store, then build data/db/racing.duckdb
+python ingest/build_core.py        # rebuild only (raw files already in data/raw/)
 ```
 
 ## Automation (GitHub Actions)
