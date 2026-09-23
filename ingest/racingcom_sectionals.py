@@ -72,6 +72,7 @@ RC_ALIASES = {
     "ladbrokes park hillside": "sandown hillside",
     "ladbrokes park lakeside": "sandown lakeside",
     "ladbrokes park": "sandown hillside",
+    "yarra valley": "yarra glen",
 }
 SPONSOR_RE = re.compile(r"^(sportsbet|bet365|apiam|ladbrokes|tab|neds|pointsbet|picklebet|southside|"
                         r"thoroughbred club|aquis)[\s-]+(park[\s-]+)?", re.I)   # 'bet365 Park Wodonga' -> 'wodonga'
@@ -84,7 +85,12 @@ def norm_track(name: str) -> str:
         return RC_ALIASES[n]
     n = SPONSOR_RE.sub("", n)
     n = re.sub(r"[^a-z0-9]+", " ", n).strip()
+    n = re.sub(r"^mount ", "mt ", n)                  # 'Mount Gambier' -> 'mt gambier'
     return RC_ALIASES.get(n, n)
+
+
+def first_word(name: str) -> str:
+    return (norm_track(name).split() or [""])[0]
 
 
 # Venue slug + date -> racing.com meeting code(s), as the racing.com page itself asks (fallback).
@@ -148,6 +154,8 @@ def calendar_month(cal: Client, year: int, month: int, states: list[str], refres
     f = RAW_DIR / f"_calendar_{year}-{month:02d}.json.gz"
     if f.exists() and not refresh:
         d = _load(f)
+    elif cal is None:
+        return []
     else:
         d = cal.q(CAL_QUERY % (",".join(f'"{x}"' for x in states), year, month))
         if (d.get("data") or {}).get("getCalendarItems") is not None:
@@ -165,24 +173,63 @@ def calendar_month(cal: Client, year: int, month: int, states: list[str], refres
 
 class CalendarIndex:
     """(date, normalised track) -> meet code, built month by month on demand."""
-    def __init__(self, cal: Client, states: list[str]):
+    def __init__(self, cal: Client | None, states: list[str]):
         from datetime import date
-        self.cal, self.states, self.months, self.idx = cal, states, set(), {}
+        self.cal, self.states, self.months, self.idx, self.days = cal, states, set(), {}, {}
         self.this_month = date.today().strftime("%Y-%m")
 
-    def lookup(self, date_: str, names: list[str]) -> str | None:
+    def _load_month(self, date_: str) -> None:
         ym = date_[:7]
-        if ym not in self.months:
-            y, m = int(ym[:4]), int(ym[5:])
-            for it in calendar_month(self.cal, y, m, self.states, refresh=(ym >= self.this_month)):
-                for k in it["keys"]:
-                    self.idx.setdefault((it["local_date"], k), str(it["race_meet_id"]))
-            self.months.add(ym)
+        if ym in self.months:
+            return
+        y, m = int(ym[:4]), int(ym[5:])
+        seen = {str(x["race_meet_id"]) for v in self.days.values() for x in v}
+        for it in calendar_month(self.cal, y, m, self.states,
+                                 refresh=(self.cal is not None and ym >= self.this_month)):
+            if str(it["race_meet_id"]) in seen:      # a meeting listed in two months' calendars
+                continue
+            seen.add(str(it["race_meet_id"]))
+            for k in it["keys"]:
+                self.idx.setdefault((it["local_date"], k), str(it["race_meet_id"]))
+            self.days.setdefault(it["local_date"], []).append(it)
+        self.months.add(ym)
+
+    def lookup(self, date_: str, names: list[str]) -> str | None:
+        self._load_month(date_)
         for n in names:
             code = self.idx.get((date_, norm_track(n)))
             if code:
                 return code
         return None
+
+    def day(self, date_: str) -> list[dict]:
+        self._load_month(date_)
+        return self.days.get(date_, [])
+
+    def fallback(self, date_: str, state: str | None, names: list[str], taken: set[str],
+                 allow_single: bool = True) -> str | None:
+        """For a meeting with no exact name match: the racing.com meeting that day (same state,
+        not already matched to another TopRate meeting) sharing the name's first word, else the
+        only such meeting left. None when it's ambiguous."""
+        free = [it for it in self.day(date_) if str(it["race_meet_id"]) not in taken
+                and (state is None or it.get("state") == state)]
+        words = {first_word(n) for n in names if n}
+        same = [it for it in free if {first_word(it.get("name")), first_word(it.get("location_name"))} & words]
+        if len(same) == 1:
+            return str(same[0]["race_meet_id"])
+        # "only one left" only when racing.com's name is not one of our own tracks: a renamed track
+        # (e.g. a sponsor name) qualifies, but a real different meeting (Pakenham) never does
+        if allow_single and len(free) == 1 and not same and not self._is_known_track(free[0]):
+            return str(free[0]["race_meet_id"])
+        return None
+
+    _known: set | None = None
+
+    def _is_known_track(self, it: dict) -> bool:
+        if CalendarIndex._known is None:
+            t = pd.read_csv(TRACKS_CSV)
+            CalendarIndex._known = {norm_track(x) for x in pd.concat([t.track, t.venue]).dropna()}
+        return bool({norm_track(it.get("name")), norm_track(it.get("location_name"))} & CalendarIndex._known)
 
 
 MEETINGS_CSV = ROOT / "ingest/meetings_vic_sa.csv"   # committed VIC/SA/QLD meeting list for backfills (from TopRate)
@@ -215,51 +262,105 @@ def recent_meetings(days: int, states: list[str]) -> pd.DataFrame:
                         columns=["date", "track", "venue", "state"])
 
 
+def resolve_codes(ms: pd.DataFrame, known: dict, cal: CalendarIndex, c: Client | None,
+                  quiet_missing: bool = False) -> None:
+    """Fill `known[(date, track)]` for every meeting in `ms`: exact calendar name match first,
+    then (for new slots only) the venue-slug API, then the same-day fallback."""
+    for date_, day in ms.groupby("date", sort=True):
+        open_ = []
+        for m in day.itertuples():
+            key = (m.date, m.track)
+            if known.get(key):
+                continue
+            tried_before = key in known
+            try:
+                code = cal.lookup(m.date, [m.track, m.venue])
+                if not code and not tried_before and c is not None:
+                    code = meet_code(c, [m.track, m.venue], m.date)
+            except Exception as e:
+                print(f"  {m.date} {m.track}: meet code lookup failed: {e}")
+                continue
+            known[key] = code or ""
+            if not code:
+                open_.append(m)
+        taken = {v for (d, _), v in known.items() if d == date_ and v}
+        for m in open_:
+            # quiet_missing = the --recent-days scan, where most listed tracks didn't race that day,
+            # so "the only meeting left" would be a guess: allow only the first-word rule there
+            code = cal.fallback(m.date, getattr(m, "state", None), [m.track, m.venue], taken,
+                                allow_single=not quiet_missing)
+            if code:
+                known[(m.date, m.track)] = code
+                taken.add(code)
+                name = next((it.get("name") for it in cal.day(m.date) if str(it["race_meet_id"]) == code), "?")
+                print(f"  {m.date} {m.track}: matched by same-day fallback to '{name}' ({code})")
+            elif not quiet_missing:
+                print(f"  {m.date} {m.track}: no racing.com meeting found")
+
+
+def _write_codes(known: dict, codes_file: Path) -> None:
+    pd.DataFrame([(d, v, k) for (d, v), k in known.items()],
+                 columns=["date", "venue", "meet_code"]).to_csv(codes_file, index=False)
+
+
+def _load_codes(codes_file: Path) -> dict:
+    if not codes_file.exists():
+        return {}
+    codes = pd.read_csv(codes_file, dtype=str).fillna("")
+    return {(r.date, r.venue): r.meet_code for r in codes.itertuples()}   # venue column holds track name
+
+
 def fetch(ms: pd.DataFrame, delay: float, quiet_missing: bool = False) -> None:
     c = Client(delay)
     cal = CalendarIndex(Client(delay, CAL_ENDPOINT, "RACINGCOM_CAL_API_KEY"),
                         sorted(set(ms["state"]) if "state" in ms else ["VIC", "SA"]))
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     codes_file = RAW_DIR / "_meet_codes.csv"
-    codes = pd.read_csv(codes_file, dtype=str) if codes_file.exists() else \
-        pd.DataFrame(columns=["date", "venue", "meet_code"])
-    codes = codes.fillna("")
-    known = {(r.date, r.venue): r.meet_code for r in codes.itertuples()}   # venue column holds track name
+    known = _load_codes(codes_file)
     print(f"{len(ms)} meeting slots to check")
-    for i, m in enumerate(ms.itertuples(), 1):
-        key = (m.date, m.track)
-        if not known.get(key):              # unseen, or a blank from an earlier failed lookup
-            tried_before = key in known
-            try:
-                code = cal.lookup(m.date, [m.track, m.venue])
-                if not code and not tried_before:
-                    code = meet_code(c, [m.track, m.venue], m.date)
-                known[key] = code or ""
-            except Exception as e:
-                print(f"  {m.date} {m.track}: meet code lookup failed: {e}"); continue
-            if not known[key] and not quiet_missing:
-                print(f"  {m.date} {m.track}: no racing.com meeting found")
-            pd.DataFrame([(d, v, k) for (d, v), k in known.items()],
-                         columns=["date", "venue", "meet_code"]).to_csv(codes_file, index=False)
-        code = known[key]
-        if not code:
-            continue
-        races_file = RAW_DIR / f"{code}_races.json.gz"
-        if not races_file.exists():
-            _save(races_file, c.q(RACES_FOR_MEET % code))
-        races = (_load(races_file).get("data") or {}).get("racesForMeet") or []
-        for rc in races:
-            if not rc.get("hasSectionals"):
+    for i, (date_, day) in enumerate(ms.groupby("date", sort=True), 1):
+        resolve_codes(day, known, cal, c, quiet_missing)
+        _write_codes(known, codes_file)
+        for m in day.itertuples():
+            code = known.get((m.date, m.track))
+            if not code:
                 continue
-            n = int(rc["raceNumber"])
-            f = RAW_DIR / f"{code}_{n:02d}.json.gz"
-            if not f.exists():
-                try:
-                    _save(f, c.q(RACE_FORM % (code, n)))
-                except Exception as e:
-                    print(f"  {code} R{n}: {e}")
-        if i % 25 == 0:
-            print(f"  {i}/{len(ms)} meetings")
+            races_file = RAW_DIR / f"{code}_races.json.gz"
+            if not races_file.exists():
+                _save(races_file, c.q(RACES_FOR_MEET % code))
+            races = (_load(races_file).get("data") or {}).get("racesForMeet") or []
+            for rc in races:
+                if not rc.get("hasSectionals"):
+                    continue
+                n = int(rc["raceNumber"])
+                f = RAW_DIR / f"{code}_{n:02d}.json.gz"
+                if not f.exists():
+                    try:
+                        _save(f, c.q(RACE_FORM % (code, n)))
+                    except Exception as e:
+                        print(f"  {code} R{n}: {e}")
+        if i % 50 == 0:
+            print(f"  {i} race days done ({date_})")
+
+
+def misses(ms: pd.DataFrame) -> None:
+    """Offline: for each meeting still without a code, list racing.com's unmatched meetings that
+    day (from the cached calendars), so any remaining name mismatch is easy to spot."""
+    codes_file = RAW_DIR / "_meet_codes.csv"
+    known = _load_codes(codes_file)
+    cal = CalendarIndex(None, sorted(set(ms["state"])))
+    n_missing = 0
+    for date_, day in ms.groupby("date", sort=True):
+        taken = {v for (d, _), v in known.items() if d == date_ and v}
+        for m in day.itertuples():
+            if known.get((m.date, m.track)):
+                continue
+            n_missing += 1
+            free = [f"{it.get('name')} [{it.get('state')}, {it.get('race_meet_type')}, {it['race_meet_id']}]"
+                    for it in cal.day(date_) if str(it["race_meet_id"]) not in taken]
+            print(f"{m.date} {m.track} ({m.state}): unmatched on racing.com that day -> "
+                  f"{'; '.join(free) if free else 'none'}")
+    print(f"{n_missing} meetings without a code, of {len(ms)}")
 
 
 def _save(p: Path, obj) -> None:
@@ -343,7 +444,7 @@ def parse_all():
 def main():
     global RAW_DIR, OUT_DIR
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["fetch", "parse"])
+    ap.add_argument("cmd", choices=["fetch", "parse", "misses"])
     ap.add_argument("--from", dest="date_from", default="2021-08-01")
     ap.add_argument("--to", dest="date_to")
     ap.add_argument("--recent-days", type=int, help="scan every VIC/SA track for the last N days")
@@ -355,6 +456,9 @@ def main():
     RAW_DIR = a.raw_dir or RAW_DIR
     OUT_DIR = a.out_dir or OUT_DIR
     states = a.states.split(",")
+    if a.cmd == "misses":
+        misses(meetings(a.date_from, a.date_to, states))
+        return
     if a.cmd == "fetch":
         if a.recent_days is not None:
             fetch(recent_meetings(a.recent_days, states), a.delay, quiet_missing=True)
