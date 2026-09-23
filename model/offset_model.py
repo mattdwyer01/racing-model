@@ -59,18 +59,25 @@ def build(con, train_end):
     return eval_set(build_features(con, train_end))
 
 
-def build_features(con, train_end):
-    """Every model input for every run (no eval filter). Fitted pieces use data before train_end only."""
-    d = ability.load(con)
-    h = figure.history(d)
+def build_features(con, train_end, shared=None, light=False):
+    """Every model input for every run (no eval filter). Fitted pieces use data before train_end only.
+    shared: dict with d, h, fr (ability.load, figure.history, projection.frame: none depend on train_end) to reuse
+    across folds. light: skip figure v2 and the position map (not production inputs). The projected frame
+    (all runs, all projection columns) is kept in LAST_PX["full"] when shared is given."""
+    d = shared["d"] if shared else ability.load(con)
+    h = shared["h"] if shared else figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
-    coef2 = ability.fit_coef_next(d, train_end)
-    a2 = ability.features(d, coef2)[["run_id"] + ability.FIG_DEPENDENT]
-    a = a.merge(a2.rename(columns={c: c + "_v2" for c in ability.FIG_DEPENDENT}), on="run_id")
-    FIG2_COEF[str(train_end)[:10]] = coef2
-    extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"] + [c + "_v2" for c in ability.FIG_DEPENDENT]
-    fr = projection.frame(con, h)
+    extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"]
+    if not light:
+        coef2 = ability.fit_coef_next(d, train_end)
+        a2 = ability.features(d, coef2)[["run_id"] + ability.FIG_DEPENDENT]
+        a = a.merge(a2.rename(columns={c: c + "_v2" for c in ability.FIG_DEPENDENT}), on="run_id")
+        FIG2_COEF[str(train_end)[:10]] = coef2
+        extra += [c + "_v2" for c in ability.FIG_DEPENDENT]
+    fr = shared["fr"] if shared else projection.frame(con, h)
     px, _, _ = projection.project(fr, train_end)
+    if shared:
+        LAST_PX["full"] = px
     if PX_KEEP:
         keep = px[PX_KEEP].copy()
         if SETTLE_V4:
@@ -82,9 +89,10 @@ def build_features(con, train_end):
         LAST_PX["px"] = keep
     if EXTRA_PROJ:
         px4 = _extra_proj(con, fr, train_end)
-    del fr
+    if not shared:
+        del fr
     xh = extra_history.features(con, d, train_end)   # GPS sections + run comments history (variants only)
-    pm = position_map.features(con, px, train_end)   # expected position / width value (variants only)
+    pm = position_map.features(con, px, train_end) if not light else px[["run_id"]]
     e = h.merge(a[["run_id"] + extra], on="run_id") \
         .merge(a[["run_id", "wpr"]].rename(columns={"wpr": "y_wpr"}), on="run_id") \
         .merge(jt.features(con), on="run_id", how="left") \

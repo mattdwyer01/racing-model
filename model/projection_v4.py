@@ -148,22 +148,23 @@ def _rival(x, s1):
     return out
 
 
-def settle(x, train_end, return_s1=False):
-    """v4 projected settle for every row of x (fits on [2019, train_end) only)."""
+def settle(x, train_end, return_s1=False, target="y_settle"):
+    """v4 projected settle for every row of x (fits on [2019, train_end) only). target: any 0..1 settle measure
+    (default the 800m position share; staged.py uses lengths behind the leader / 15)."""
     train_end = pd.Timestamp(train_end)
-    tr = (x["race_date"] < train_end) & (x["race_date"] >= "2019-01-01") & x["y_settle"].notna()
-    s1 = _fit(x.loc[tr, X1], x.loc[tr, "y_settle"]).predict(x[X1].to_numpy(float))
+    tr = (x["race_date"] < train_end) & (x["race_date"] >= "2019-01-01") & x[target].notna()
+    s1 = _fit(x.loc[tr, X1], x.loc[tr, target]).predict(x[X1].to_numpy(float))
     oof = s1.copy()
     fold = (x["race_id"].to_numpy() % N_OOF)
     trv = tr.to_numpy()
     for k in range(N_OOF):
         fit_m, pred_m = trv & (fold != k), trv & (fold == k)
-        oof[pred_m] = _fit(x.loc[fit_m, X1], x.loc[fit_m, "y_settle"]).predict(x.loc[pred_m, X1].to_numpy(float))
+        oof[pred_m] = _fit(x.loc[fit_m, X1], x.loc[fit_m, target]).predict(x.loc[pred_m, X1].to_numpy(float))
     # training rows: rivals' out-of-fold projections; other rows: full stage-1 model
     s1_use = np.where(trv, oof, s1)
     riv = _rival(x, s1_use)
     x2 = pd.concat([x[X1], riv], axis=1)
-    s2 = _fit(x2.loc[tr, X2], x.loc[tr, "y_settle"]).predict(x2[X2].to_numpy(float)).clip(0, 1)
+    s2 = _fit(x2.loc[tr, X2], x.loc[tr, target]).predict(x2[X2].to_numpy(float)).clip(0, 1)
     return (s2, s1) if return_s1 else s2
 
 
