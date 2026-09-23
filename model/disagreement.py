@@ -1,6 +1,8 @@
 """Disagreement test: where a factor moves the model's price a lot, is the market wrong?
 
     python model/disagreement.py      # -> reports/disagreement.md
+    python model/disagreement.py --prod2   # base = prod2 (production + v4 settle + GPS pace + figure v2 +
+                                           # rating mu) -> reports/disagreement_prod2.md
 
 Factors (vs the production logit, model/production.py COLS):
   jockey/trainer   production without the jockey/trainer inputs vs production
@@ -43,6 +45,34 @@ FACTORS = {
     "figure v2": (C, _swap_fig2(C)),
     "position map": (C, C + position_map.FEATS),
 }
+PROD2 = "--prod2" in sys.argv
+if PROD2:
+    from model import blend_eval as be
+    C2 = list(dict.fromkeys(be.feats_for("prod2", be.LOGIT_X) + be.MU))
+
+    def _no(cols, drop):
+        return [c for c in cols if c not in drop]
+    FACTORS = {
+        "jockey/trainer": (_no(C2, jt.COLS), C2),
+        "past ground loss": (_no(C2, production.GL), C2),
+        "figure v2": (list(dict.fromkeys(be.feats_for("prod2-fig2", be.LOGIT_X) + be.MU)), C2),
+        "rating mu": (_no(C2, be.MU), C2),
+        "v4 settle": (list(dict.fromkeys(be.feats_for("prod2-v4", be.LOGIT_X) + be.MU)), C2),
+        "GPS pace": (_no(C2, om.GPS_PACE), C2),
+        "position map": (C2, C2 + position_map.FEATS),
+    }
+
+
+def _add_mu(fit_rows, *frames):
+    """Rating model (rating.py) fitted on fit_rows; r_mu (vs field) and r_sigma added to each frame."""
+    from model import rating
+    m = rating.RatingModel().fit(rating.add_fig_sd(fit_rows))
+    out = []
+    for f in frames:
+        f2 = rating.add_fig_sd(f)
+        mu = pd.Series(m.mu(f2), index=f.index)
+        out.append(f.assign(r_mu=mu - mu.groupby(f["race_id"].to_numpy()).transform("mean"), r_sigma=m.sigma(f2)))
+    return out
 
 
 def _race(df):
@@ -58,7 +88,7 @@ def blend_probs(inner, bl, tr, te, cols):
     return om._softmax(a * np.log(p) + b * te["log_p_sp"].to_numpy(float), te["race"].to_numpy())
 
 
-CKPT = ROOT / "data/interim/disagreement"
+CKPT = ROOT / ("data/interim/disagreement_prod2" if "--prod2" in sys.argv else "data/interim/disagreement")
 
 
 def run():
@@ -73,12 +103,16 @@ def run():
             rows.append(pd.read_parquet(ck))
             print(y, "loaded", flush=True)
             continue
+        om.EXTRA_PROJ = PROD2
         e = om.add_context(om.build(con, f"{y}-01-01"))
         tr = _race(e[e.race_date < f"{y}-01-01"].copy())
         te = _race(e[e.race_date.dt.year == y].copy())
         assert tr.race_date.max() < te.race_date.min()
         cut = tr["race_date"].quantile(0.75)
         inner, bl = _race(tr[tr.race_date <= cut].copy()), _race(tr[tr.race_date > cut].copy())
+        if PROD2:          # rating mu: fitted on the first 75% for the blend window, on all training rows for Y
+            inner, bl = _add_mu(inner, inner, bl)
+            tr, te = _add_mu(tr, tr, te)
         c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
         out = te[["race_id", "run_id", "state", "sp", "p_sp", "won"]].copy()
         out["p_cal"] = om._softmax(c * te["log_p_sp"].to_numpy(float), te["race"].to_numpy())
@@ -122,7 +156,8 @@ def group_stats(g, ctrl_roi, rng):
 
 def main():
     d = run()
-    d.to_csv(ROOT / "reports/disagreement_per_runner.csv.gz", index=False, float_format="%.6f")
+    suffix = "_prod2" if PROD2 else ""
+    d.to_csv(ROOT / f"reports/disagreement_per_runner{suffix}.csv.gz", index=False, float_format="%.6f")
     rng = np.random.default_rng(0)
     d["band"] = pd.cut(d["sp"], PRICE_BANDS)
     band_roi = (d["won"] * d["sp"] - 1).groupby(d["band"], observed=False).mean()
@@ -141,7 +176,7 @@ def main():
                 rows.append({"factor": name, "group": side, "races": st,
                              "shift (median d)": float(np.median(x[m & sm])), **group_stats(g, None, rng)})
     t = pd.DataFrame(rows)
-    L = ["# Disagreement test", "",
+    L = ["# Disagreement test" + (" (base model: prod2)" if PROD2 else ""), "",
          "- Per factor: runners whose out-of-sample blended probability moves most when the factor is added (d = log p_with"
          " - log p_without), 2023 to 2026 test years, VIC/SA/QLD",
          "- A/E SP = wins / SP-implied wins; A/E cal = wins / calibrated-SP wins (removes the favourite-longshot bias)",
@@ -149,7 +184,7 @@ def main():
          " (reweighted to the group's price mix). Positive ROI minus control = the factor finds value the market misses",
          "- 95% ranges: race bootstrap (2,000)", "",
          t.to_markdown(index=False, floatfmt=".3f")]
-    out = ROOT / "reports/disagreement.md"
+    out = ROOT / f"reports/disagreement{suffix}.md"
     out.write_text("\n".join(L) + "\n")
     print("\n".join(L))
 
