@@ -167,6 +167,7 @@ def walk_forward():
         e = add_context(build(con, f"{y}-01-01"))
         tr = e[e.race_date < f"{y}-01-01"].copy()
         te = e[e.race_date.dt.year == y].copy()
+        assert tr.race_date.max() < te.race_date.min(), "train must end before the test period"
         tr["race"], te["race"] = pd.factorize(tr["race_id"])[0], pd.factorize(te["race_id"])[0]
         fns, m, rounds = fit_all(tr)
         res = {"fold": y, "races": te.race_id.nunique()}
@@ -250,6 +251,7 @@ def qld():
         tr = e[e.race_date < f"{y}-01-01"].copy()
         te = e[(e.race_date.dt.year == y) & (e.state == "QLD")].copy()
         trq = tr[tr.state == "QLD"].copy()
+        assert tr.race_date.max() < te.race_date.min(), "train must end before the test period"
         for df in (tr, te, trq):
             df["race"] = pd.factorize(df["race_id"])[0]
         cols = ["log_p_sp"] + BASE + JT + PROJ
