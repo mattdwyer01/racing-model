@@ -10,7 +10,7 @@ predictions), then applied unchanged with the price at T in place of SP:
     calibrated price at T = softmax(c * log p_T);  blend = softmax(a * log p_model + b * log p_T)
 Test: 2026 VIC/SA/QLD races where every runner in the final field has a price at T (last snapshot at or
 before start - T; snapshots are every ~20-40 minutes, so the actual age is reported).
-Main figure: blend minus calibrated price at T, 95% range from 2,000 race bootstrap resamples.
+Main figure: blend minus calibrated price at T (all, QLD, VIC/SA), 95% range from 2,000 race bootstrap resamples.
 Secondary: the same with c, a, b refitted on 2026 races before 1 July (price at T), tested from 1 July.
 """
 import sys
@@ -90,11 +90,15 @@ def main():
             ll[f"blend {name} + price at T"] = race_ll(om._softmax(a * np.log(p) + b * te["log_p_T"].to_numpy(), race), te)
         for k, v in ll.items():
             rows.append({"T (min)": T, "model": k, "log loss": v.mean()})
+        qld = (te.loc[te["won"] == 1, "state"] == "QLD").to_numpy()
         for name in models:
             x = ll[f"blend {name} + price at T"] - ll["price at T calibrated"]
-            lo, hi = boot_ci(x, rng)
-            rows.append({"T (min)": T, "model": f"DIFF blend {name} - calibrated price at T", "log loss": x.mean(),
-                         "95% lo": lo, "95% hi": hi, "races": len(x)})
+            for lab, m in [("all", np.ones(len(x), bool)), ("QLD", qld), ("VIC/SA", ~qld)]:
+                if m.sum() < 50:
+                    continue
+                lo, hi = boot_ci(x[m], rng)
+                rows.append({"T (min)": T, "model": f"DIFF blend {name} - calibrated price at T", "races": lab,
+                             "log loss": x[m].mean(), "95% lo": lo, "95% hi": hi, "n": int(m.sum())})
         # secondary: weights refitted on early-2026 prices, tested from 1 July
         e1, e2 = _race(te[te.race_date < REFIT_SPLIT].copy()), _race(te[te.race_date >= REFIT_SPLIT].copy())
         if e1.race_id.nunique() > 200 and e2.race_id.nunique() > 200:
