@@ -44,6 +44,8 @@ GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
         dict(num_leaves=63, min_data_in_leaf=300, learning_rate=0.02),
         dict(num_leaves=15, min_data_in_leaf=300, learning_rate=0.05, lambda_l2=30.0)]
 MAX_ROUNDS, EARLY = 1500, 100
+PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
+LAST_PX = {}
 
 
 # ---------------------------------------------------------------- data
@@ -63,6 +65,8 @@ def build_features(con, train_end):
     FIG2_COEF[str(train_end)[:10]] = coef2
     extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"] + [c + "_v2" for c in ability.FIG_DEPENDENT]
     px, _, _ = projection.project(projection.frame(con, h), train_end)
+    if PX_KEEP:
+        LAST_PX["px"] = px[PX_KEEP].copy()
     xh = extra_history.features(con, d, train_end)   # GPS sections + run comments history (variants only)
     pm = position_map.features(con, px, train_end)   # expected position / width value (variants only)
     e = h.merge(a[["run_id"] + extra], on="run_id") \
