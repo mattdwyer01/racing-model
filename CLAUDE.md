@@ -57,6 +57,16 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Figure v2 (`ability.fit_coef_next`, `blend_eval_fig2.md`): next-start WPR regression weights (settle +0.17
     not -5.6; corrections for missing sectionals, heavy defeats, heavy going, track class). Logit model alone
     -0.0033 (QLD -0.0055), but blend +0.0001 n.s. and GBM no gain. Not adopted for the blend.
+  - Run comments (`extra_history.CM_FEATS`) + past ground loss = production model (`model/production.py`, WPR
+    points in `reports/logit_wpr_table.md`, race cards via `tools/race_card.py`). Latest rerun with VIC/SA
+    racing.com GPS in `gps_runs` (`blend_eval_vicsa.md`): prod logit blend minus baseline -0.0002 (n.s.),
+    QLD -0.0005 (95% -0.0009 to -0.0001), VIC/SA 0.0000; prod logit model alone -0.0056. Prod GBM blend is worse
+    in VIC/SA (+0.0013, significant): use the logit blend.
+  - Rating (Thurstone) model: +0.0009 worse. Position value map (`position_map.py`): 0.0000 vs prod. VIC/SA
+    GPS section history (`gpsx`): +0.0002 logit blend, 0.0000 GBM blend. None adopted.
+  - Price timing (`reports/price_timing.md`, 2026, git snapshots): the snapshots are 1.5 to 3 hours old even at
+    "T-2" and far behind SP (1.88 vs 1.854). Blend minus calibrated price: VIC/SA -0.0016 at T-60 to -0.0002 at
+    T-2 (n.s.); QLD +0.0030 to +0.0034 (worse). Inconclusive; needs the Vultr TAB log at true T-10 / T-2.
   - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).
   - Caveat: history uses each past run's CURRENT WPR (TopRate revises Preliminary to Final); on race day some
     were still preliminary. Mild look-ahead the leakage test cannot catch; needs dated WPR snapshots.
