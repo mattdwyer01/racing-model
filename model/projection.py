@@ -224,10 +224,14 @@ def track_bias(x):
     Stored as deviations from the global slope (fitted on 2019-2021), and interacted with the runner's
     projected settle / barrier vs the field (tbx_*). bias_adj = long-run deviations x those (WPR points).
     """
-    t = x[(x["h_none"] == 0) & x["wpr"].notna() & x["y_settle"].notna()].copy()
+    # every run (incl. race days without results yet) so each meeting gets its prior history;
+    # runs without a result contribute nothing to the sums
+    t = x.copy()
+    valid = (t["h_none"] == 0) & t["wpr"].notna() & t["y_settle"].notna()
     t["res"] = t["wpr"] - t["h_wpr"]
     for c in ["res", "y_settle", "barrier_pct"]:
-        t[c + "_dm"] = t[c] - t.groupby("race_id")[c].transform("mean")
+        v = t[c].where(valid)
+        t[c + "_dm"] = v - v.groupby(t["race_id"]).transform("mean")
     t["sxy"], t["sxx"] = t["res_dm"] * t["y_settle_dm"], t["y_settle_dm"] ** 2
     t["bxy"], t["bxx"] = t["res_dm"] * t["barrier_pct_dm"], t["barrier_pct_dm"] ** 2
     m = t.groupby(["track", "race_date"]).agg(sxy=("sxy", "sum"), sxx=("sxx", "sum"), bxy=("bxy", "sum"),
@@ -263,10 +267,12 @@ def td_barrier(x):
     all prior days at the same track and distance, shrunk toward the global slope (2019-2021).
     td_bar_settle / td_bar_perf are the slopes; tdx_* = slope x the runner's barrier share vs the field.
     """
-    t = x[x["y_settle"].notna()].copy()
+    t = x.copy()   # all runs, so race days without results still get their prior history
+    valid = t["y_settle"].notna()
     t["res"] = (t["wpr"] - t["h_wpr"]).where(t["h_none"] == 0)
     for c in ["y_settle", "barrier_pct", "res"]:
-        t[c + "_dm"] = t[c] - t.groupby("race_id")[c].transform("mean")
+        v = t[c].where(valid)
+        t[c + "_dm"] = v - v.groupby(t["race_id"]).transform("mean")
     t["sxy"], t["xx"] = t["y_settle_dm"] * t["barrier_pct_dm"], t["barrier_pct_dm"] ** 2
     t["pxy"] = t["res_dm"] * t["barrier_pct_dm"]
     t["pxx"] = t["xx"].where(t["res_dm"].notna())
