@@ -8,6 +8,8 @@ Per-run components (post-race, from `runs`/`races`; only ever used for LATER rac
     settle   position at 800m as a share of the field (0 = leader, 1 = last)
     shape    race early shape (+ = fast early; TopRate raceShapeEarly)
     pace     shape * (1 - settle): on-pace runner in a fast-early race
+    gl       GPS extra ground vs the field mean (m, + = covered more); 0 when no GPS
+    rail     GPS average distance from the rail vs the field mean (m); 0 when no GPS
 
 The figure is linear in the components: fig = wpr + sum_j c_j * x_j. Because the
 pre-race ability is a decayed mean of past figures, the c_j are fitted directly by a
@@ -25,7 +27,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data/db/racing.duckdb"
 
-COMPONENTS = ["wpr", "s_early", "s_l600", "wt_rel", "settle", "shape", "pace"]
+COMPONENTS = ["wpr", "s_early", "s_l600", "wt_rel", "settle", "shape", "pace", "gl", "rail"]
 K = 10                  # prior starts used
 HALF_LIFE_RUNS = 3.0    # decay by starts back
 HALF_LIFE_DAYS = 365.0  # and by age of the run
@@ -40,15 +42,22 @@ select r.run_id, r.race_id, r.horse_id, r.race_date, ra.distance dist, ra.field_
   r.res_wpr wpr, r.res_s_early s_early, r.res_s_l600 s_l600,
   r.weight_kg - avg(r.weight_kg) over (partition by r.race_id) wt_rel,
   (r.res_pos800 - 1) / greatest(ra.field_size - 1, 1) settle,
-  ra.res_shape_early shape
-from runs r join races ra using (race_id)
+  ra.res_shape_early shape{gps_cols}
+from runs r join races ra using (race_id){gps_join}
 where not r.is_trial_or_jumpout
 """
+GPS_COLS = """,
+  g.res_gps_extra_m gl,
+  g.res_gps_rail_m - avg(g.res_gps_rail_m) over (partition by g.race_id) rail"""
+GPS_JOIN = "\nleft join gps_runs g using (run_id)"
 
 
 def components(con=None):
     con = con or duckdb.connect(str(DB), read_only=True)
-    d = con.sql(SQL).df()
+    has_gps = con.sql("select count(*) from information_schema.tables where table_name = 'gps_runs'").fetchone()[0]
+    sql = SQL.format(gps_cols=GPS_COLS if has_gps else ", null::double gl, null::double rail",
+                     gps_join=GPS_JOIN if has_gps else "")
+    d = con.sql(sql).df()
     d["race_date"] = pd.to_datetime(d["race_date"])
     d = d[d["wpr"].notna()].copy()
 
@@ -65,6 +74,8 @@ def components(con=None):
     d["settle"] = d["settle"].clip(0, 1).fillna(0.5)
     d["shape"] = d["shape"].fillna(0.0)
     d["pace"] = d["shape"] * (1 - d["settle"])
+    d["gl_miss"] = d["gl"].isna().astype(float)
+    d[["gl", "rail"]] = d[["gl", "rail"]].fillna(0.0)
     return d
 
 
@@ -72,7 +83,7 @@ def history(d, half_life_runs=HALF_LIFE_RUNS, half_life_days=HALF_LIFE_DAYS, k=K
     """Decayed mean of each component over the horse's prior starts (pre-race safe)."""
     d = d.sort_values(["horse_id", "race_date", "run_id"]).reset_index(drop=True)
     g = d.groupby("horse_id", sort=False)
-    cols = COMPONENTS + ["s_early_miss", "settle_miss"]
+    cols = COMPONENTS + ["s_early_miss", "settle_miss", "gl_miss"]
     num = {c: np.zeros(len(d)) for c in cols}
     den = np.zeros(len(d))
     last_wpr = g["wpr"].shift(1)

@@ -7,6 +7,7 @@ Tables written to data/db/racing.duckdb:
     tracks   track -> venue, state, location class, surface, in_scope (from ingest/tracks.csv)
     races    one row per race (races and trials)
     runs     one row per runner per race, with pre-race history fields
+    gps_runs GPS ground loss and rail distance per run (see ingest/gps_link.py), if GPS files present
 
 Column naming in `runs`:
     no prefix   known before the race (safe to use as a model input)
@@ -15,6 +16,11 @@ Column naming in `runs`:
 from pathlib import Path
 
 import duckdb
+
+try:
+    from ingest import gps_link
+except ImportError:   # run as a script: python ingest/build_core.py
+    import gps_link
 
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data/db/racing.duckdb"
@@ -152,6 +158,7 @@ def build(db=DB):
     con.execute(SQL)
     if LIVE.exists():
         con.execute(LIVE_SQL)
+    gps_link.build(con)   # table gps_runs, when GPS parquets are in data/interim
     return con
 
 
