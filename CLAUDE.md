@@ -38,6 +38,16 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
 - My workspace and GitHub-hosted runners may be blocked by TAB (confirmed) and possibly RQ / racing.com;
   set repo variable `SCRAPER_RUNNER=vultr-au` to move scraping to the Vultr self-hosted runner.
 
+## Baseline (fixed; compare every change against it, race by race)
+- `model/blend_eval.py` at commit 95f42f7, report `reports/baseline_blend_eval.md`, per-race losses in
+  `reports/blend_per_race.csv.gz` (variant `baseline`). Leak-free (`tools/leakage_check.py` passes).
+- Test: 37,821 VIC/SA/QLD races, folds 2023 to 2026 YTD; model = figure + ability + jockey/trainer +
+  race-day projection v3, no market inputs; blend = softmax(a log p_model + b log p_SP), a/b fitted on the
+  last 25% of each training window from out-of-sample predictions.
+- Pooled log loss: SP raw 1.7900, SP calibrated 1.7863, logit 1.9332, GBM 1.9090, logit blend 1.7852,
+  GBM blend 1.7856. Logit blend minus SP calibrated -0.0011 (95% -0.0017 to -0.0005); minus SP raw -0.0048.
+  Ahead or level in all 8 half-years, significant in 2 (2023 H1, 2024 H1); weight on model a = 0.10-0.15.
+
 ## Model status (log loss, 2023-2026 walk-forward, VIC/SA/QLD; SP calibrated = 1.786)
 - Per-run figure (`model/figure.py`, `validate_figure.py`): WPR + sectionals + pace (settle x early shape).
   WPR is already weight adjusted; pace is the main lift. Figure alone 1.997; SP + figure beats SP by 0.001.
