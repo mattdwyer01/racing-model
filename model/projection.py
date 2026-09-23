@@ -46,7 +46,8 @@ select r.run_id, r.res_wpr wpr, r.barrier, r.jockey, r.trainer, r.age, ra.track,
   (r.res_pos800 - 1) / greatest(count(*) over (partition by r.race_id) - 1, 1) y_settle,
   ra.res_shape_early y_shape, ra.res_leader_early_rating y_lead_early,
   g.res_gps_extra_m y_gl,
-  g.res_gps_rail_m - avg(g.res_gps_rail_m) over (partition by r.race_id) y_rail
+  g.res_gps_rail_m - avg(g.res_gps_rail_m) over (partition by r.race_id) y_rail,
+  g.res_gps_early400 y_early
 from runs r join races ra using (race_id) left join gps_runs g using (run_id)
 where not r.is_trial_or_jumpout
 """
@@ -54,7 +55,7 @@ where not r.is_trial_or_jumpout
 SETTLE_X = ["st_mean", "st_last", "st_min3", "st_sd", "st_n", "st_dist", "dist_change", "h_s_early",
             "settle_rank", "early_rank", "inside_faster", "barrier", "barrier_pct", "field_n", "dist",
             "synth", "track_code", "rail_m", "jockey_fwd", "trainer_fwd", "first_up", "log_days",
-            "h_none", "ability_rank", "age"]
+            "h_none", "ability_rank", "age", "early_hist", "early_n"]
 SETTLE_V1 = ["h_settle", "h_s_early", "settle_rank_v1", "early_rank", "barrier", "barrier_pct", "field_n",
              "dist", "synth", "h_none", "h_settle_miss", "log_n"]
 PACE_X = ["n_leaders", "min_settle", "low3_settle", "front3_early", "max_early", "field_n", "dist", "synth",
@@ -63,7 +64,10 @@ GL_X = ["barrier", "barrier_pct", "inside_faster", "proj_settle", "proj_settle_r
         "gps_n", "jockey_width", "field_n", "dist", "synth", "track_code", "rail_m"]
 GL_V1 = ["barrier", "barrier_pct", "field_n", "proj_settle", "proj_settle_rank", "h_gl", "h_gl_miss",
          "dist", "track_code", "synth"]
-OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj"]
+BIAS = ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "bias_adj"]
+OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj",
+       "pace_x_late", "adj_late", "proj_early"] + BIAS
+BIAS_LAMBDA_LONG, BIAS_LAMBDA_RECENT, BIAS_DAYS = 30.0, 10.0, 35
 
 
 # ---------------------------------------------------------------- inputs
@@ -122,6 +126,11 @@ def frame(con, h=None):
         wv = np.where(okv, 0.5 ** (np.arange(K) / 3.0), 0)
         x[name] = (wv * np.nan_to_num(v)).sum(1) / (wv.sum(1) + 1.0)
     x["gps_n"] = (~np.isnan(_lags(x, "y_gl"))).sum(1)
+    v = _lags(x, "y_early")
+    okv = ~np.isnan(v)
+    wv = np.where(okv, 0.5 ** (np.arange(K) / 3.0), 0)
+    x["early_n"] = okv.sum(1)
+    x["early_hist"] = np.where(okv.any(1), (wv * np.nan_to_num(v)).sum(1) / np.maximum(wv.sum(1), 1e-9), np.nan)
 
     # field context
     x["barrier"] = x["barrier"].where(x["barrier"] > 0)
@@ -154,11 +163,58 @@ def frame(con, h=None):
     x["log_days"] = np.log1p(x["days_since_start"].fillna(0))
     x["first_up"] = (x["days_since_start"].fillna(999) >= 60).astype(float)
 
+    # late-speed strength vs the field (pre-race), for pace x running style
+    hl = x["h_s_l600"].where(x["h_none"] == 0)
+    x["late_rel"] = (hl - hl.groupby(x["race_id"]).transform("mean")).fillna(0).clip(-10, 10)
+
+    x = track_bias(x)
+
     # jockey / trainer tendencies: actual settle minus the horse's own history; jockey width
     x["settle_resid"] = x["y_settle"] - x["st_mean"]
     x["jockey_fwd"] = _rolling_tendency(con, x, "jockey", "settle_resid", 365, 20)
     x["trainer_fwd"] = _rolling_tendency(con, x, "trainer", "settle_resid", 730, 20)
     x["jockey_width"] = _rolling_tendency(con, x, "jockey", "y_rail", 365, 20)
+    return x
+
+
+def track_bias(x):
+    """Settle and barrier bias at each track from PAST meetings only.
+
+    Per meeting: within-race slopes of (WPR - pre-race ability) on actual settle share and barrier share,
+    pooled over the meeting's races. For a race: long-run = all prior meetings at the track (shrunk);
+    recent = the previous 1-2 meetings at the same track and rail setting within 35 days (shrunk).
+    Stored as deviations from the global slope (fitted on 2019-2021), and interacted with the runner's
+    projected settle / barrier vs the field (tbx_*). bias_adj = long-run deviations x those (WPR points).
+    """
+    t = x[(x["h_none"] == 0) & x["wpr"].notna() & x["y_settle"].notna()].copy()
+    t["res"] = t["wpr"] - t["h_wpr"]
+    for c in ["res", "y_settle", "barrier_pct"]:
+        t[c + "_dm"] = t[c] - t.groupby("race_id")[c].transform("mean")
+    t["sxy"], t["sxx"] = t["res_dm"] * t["y_settle_dm"], t["y_settle_dm"] ** 2
+    t["bxy"], t["bxx"] = t["res_dm"] * t["barrier_pct_dm"], t["barrier_pct_dm"] ** 2
+    m = t.groupby(["track", "race_date"]).agg(sxy=("sxy", "sum"), sxx=("sxx", "sum"), bxy=("bxy", "sum"),
+                                               bxx=("bxx", "sum"), rail=("rail_m", "first")).reset_index()
+    m["rail"] = m["rail"].round(1).fillna(-1)
+    early = m["race_date"].dt.year.between(2019, 2021)
+    gs = m.loc[early, "sxy"].sum() / m.loc[early, "sxx"].sum()
+    gb = m.loc[early, "bxy"].sum() / m.loc[early, "bxx"].sum()
+    m = m.sort_values(["track", "race_date"]).reset_index(drop=True)
+    g = m.groupby("track")
+    for c, xy, xx, glob in [("settle", "sxy", "sxx", gs), ("bar", "bxy", "bxx", gb)]:
+        cxy, cxx = g[xy].cumsum() - m[xy], g[xx].cumsum() - m[xx]
+        m[f"tb_{c}_long"] = cxy / (cxx + BIAS_LAMBDA_LONG) - glob * cxx / (cxx + BIAS_LAMBDA_LONG)
+        gr = m.groupby(["track", "rail"])
+        gap = (m["race_date"] - gr["race_date"].shift(1)).dt.days
+        rxy = gr[xy].shift(1).fillna(0) + gr[xy].shift(2).fillna(0).where(
+            (m["race_date"] - gr["race_date"].shift(2)).dt.days <= 2 * BIAS_DAYS, 0)
+        rxx = gr[xx].shift(1).fillna(0) + gr[xx].shift(2).fillna(0).where(
+            (m["race_date"] - gr["race_date"].shift(2)).dt.days <= 2 * BIAS_DAYS, 0)
+        rec = rxy / (rxx + BIAS_LAMBDA_RECENT) - glob * rxx / (rxx + BIAS_LAMBDA_RECENT)
+        m[f"tb_{c}_recent"] = rec.where(gap <= BIAS_DAYS, 0.0).fillna(0.0)
+    cols = ["tb_settle_long", "tb_settle_recent", "tb_bar_long", "tb_bar_recent"]
+    x = x.merge(m[["track", "race_date"] + cols], on=["track", "race_date"], how="left")
+    x[cols] = x[cols].fillna(0.0)
+    x.attrs["bias_global"] = (gs, gb)
     return x
 
 
@@ -191,11 +247,12 @@ def cost_coef(x, mask):
     t["pace"] = t["y_shape"] * (1 - t["y_settle"])
     t["gl"] = t["y_gl"].fillna(0)
     t["gl_miss"] = t["y_gl"].isna().astype(float)
+    t["late_x"] = t["y_shape"] * t["late_rel"]
     t["perf"] = t["wpr"] - t["h_wpr"]
-    cols = ["y_settle", "pace", "gl", "gl_miss"]
+    cols = ["y_settle", "pace", "gl", "late_x", "gl_miss"]
     dm = t[cols + ["perf"]] - t.groupby("race_id")[cols + ["perf"]].transform("mean")
     b = np.linalg.lstsq(dm[cols].to_numpy(float), dm["perf"].to_numpy(float), rcond=None)[0]
-    return dict(zip(["settle", "pace", "gl"], b[:3]))
+    return dict(zip(["settle", "pace", "gl", "late_x"], b[:4]))
 
 
 def project(x, train_end, versions=("v2",)):
@@ -228,10 +285,20 @@ def project(x, train_end, versions=("v2",)):
         x["proj_gl_v1"] = _fit(x.loc[mg, GL_V1], x.loc[mg, "y_gl"]).predict(x[GL_V1].to_numpy(float))
         x["proj_gl_v1"] -= x.groupby("race_id")["proj_gl_v1"].transform("mean")
 
+    me = tr & x["y_early"].notna()
+    x["proj_early"] = _fit(x.loc[me, SETTLE_X], x.loc[me, "y_early"]).predict(x[SETTLE_X].to_numpy(float)).clip(0, 1)
+
     c = cost_coef(x, tr)
     extras["cost"] = c
     adj = c["settle"] * x["proj_settle"] + c["pace"] * x["proj_pace"] + c["gl"] * x["proj_gl"]
     x["proj_adj"] = adj - adj.groupby(x["race_id"]).transform("mean")
+    x["pace_x_late"] = x["proj_shape"] * x["late_rel"]
+    x["adj_late"] = c["late_x"] * x["pace_x_late"]
+    sd = x["proj_settle"] - x.groupby("race_id")["proj_settle"].transform("mean")
+    bd = x["barrier_pct"] - x.groupby("race_id")["barrier_pct"].transform("mean")
+    x["tbx_settle_long"], x["tbx_settle_recent"] = x["tb_settle_long"] * sd, x["tb_settle_recent"] * sd
+    x["tbx_bar_long"], x["tbx_bar_recent"] = x["tb_bar_long"] * bd, x["tb_bar_recent"] * bd
+    x["bias_adj"] = x["tbx_settle_long"] + x["tbx_bar_long"]
     return x, r, extras
 
 
@@ -265,71 +332,83 @@ def main():
     con = duckdb.connect(str(figure.DB), read_only=True)
     x0 = frame(con)
     print("frame", len(x0), flush=True)
-    acc, ll_rows, per, costs = [], [], {}, {}
+    V2 = ["barrier_pct", "proj_settle", "proj_pace", "proj_gl", "proj_adj"]
+    STYLE = ["pace_x_late", "adj_late"]
+    EARLY = ["proj_early"]
     variants = {
         "figure": FIG,
-        "figure + barrier": FIG + ["barrier_pct"],
-        "figure + projection": FIG + ["barrier_pct", "proj_settle", "proj_pace", "proj_gl", "proj_adj"],
+        "figure + projection v2": FIG + V2,
+        "+ pace x style": FIG + V2 + STYLE,
+        "+ track bias": FIG + V2 + BIAS,
+        "+ early position": FIG + V2 + EARLY,
+        "+ all three": FIG + V2 + STYLE + BIAS + EARLY,
         "SP": ["log_p_sp"],
-        "SP + figure": ["log_p_sp"] + FIG,
-        "SP + figure + projection": ["log_p_sp"] + FIG + ["barrier_pct", "proj_settle", "proj_pace", "proj_gl",
-                                                           "proj_adj"],
+        "SP + figure + projection v2": ["log_p_sp"] + FIG + V2,
+        "SP + figure + projection, all": ["log_p_sp"] + FIG + V2 + STYLE + BIAS + EARLY,
     }
+    acc, ll_rows, per, per_qld, costs = [], [], {}, {}, {}
     for y in [2023, 2024, 2025, 2026]:
-        x, r, ex = project(x0, f"{y}-01-01", versions=("v1", "v2"))
+        x, r, ex = project(x0, f"{y}-01-01")
         costs[y] = ex["cost"]
         te = x[(x.race_date.dt.year == y) & x["in_scope"]]
         rt = r[r.index.isin(te.race_id)]
         q = te[te.state == "QLD"]
         acc += [
-            {"fold": y, "metric": "settle R2: v2", "v": _r2(te.y_settle, te.proj_settle)},
-            {"fold": y, "metric": "settle R2: v1", "v": _r2(te.y_settle, te.proj_settle_v1)},
-            {"fold": y, "metric": "settle in-race rank corr: v2", "v": _spearman_in_race(te, "y_settle", "proj_settle")},
-            {"fold": y, "metric": "settle in-race rank corr: v1", "v": _spearman_in_race(te, "y_settle", "proj_settle_v1")},
-            {"fold": y, "metric": "projected leader led at 800m: v2", "v": _leader_hit(te, "proj_settle")},
-            {"fold": y, "metric": "projected leader led at 800m: v1", "v": _leader_hit(te, "proj_settle_v1")},
+            {"fold": y, "metric": "settle R2", "v": _r2(te.y_settle, te.proj_settle)},
+            {"fold": y, "metric": "settle in-race rank corr", "v": _spearman_in_race(te, "y_settle", "proj_settle")},
+            {"fold": y, "metric": "projected leader led at 800m", "v": _leader_hit(te, "proj_settle")},
+            {"fold": y, "metric": "QLD early position (GPS 400m) R2: early model", "v": _r2(q.y_early, q.proj_early)},
+            {"fold": y, "metric": "QLD early position (GPS 400m) R2: settle model", "v": _r2(q.y_early, q.proj_settle)},
             {"fold": y, "metric": "pace R2: early shape", "v": _r2(rt.y_shape, rt.proj_shape)},
-            {"fold": y, "metric": "pace R2: leader early rating", "v": _r2(rt.y_lead_early, rt.proj_lead_early)},
-            {"fold": y, "metric": "ground loss R2 (QLD GPS): v2", "v": _r2(q.y_gl, q.proj_gl)},
-            {"fold": y, "metric": "ground loss R2 (QLD GPS): v1", "v": _r2(q.y_gl, q.proj_gl_v1)},
+            {"fold": y, "metric": "ground loss R2 (QLD GPS)", "v": _r2(q.y_gl, q.proj_gl)},
         ]
         e = eval_set(x)
         tr = e[e.race_date < f"{y}-01-01"]
         tt = e[e.race_date.dt.year == y]
+        isq = (tt.loc[tt.won == 1, "state"] == "QLD").to_numpy()
         res = {"fold": y, "races": tt.race_id.nunique()}
         for k, cols in variants.items():
             ll = race_ll(fit_eval(tr, tt, cols)[0], tt)
             res[k] = ll.mean()
             per.setdefault(k, []).append(ll)
+            per_qld.setdefault(k, []).append(ll[isq])
         ll_rows.append(res)
         print(y, {k: round(float(v), 4) for k, v in res.items() if k != "fold"}, flush=True)
 
     a = pd.DataFrame(acc).pivot(index="metric", columns="fold", values="v")
     t = pd.DataFrame(ll_rows).set_index("fold")
     pooled = {k: np.concatenate(v) for k, v in per.items()}
+    pq = {k: np.concatenate(v) for k, v in per_qld.items()}
     t.loc["pooled"] = [t["races"].sum()] + [pooled[k].mean() for k in per]
 
-    def diff(p, q):
-        z = pooled[p] - pooled[q]
-        return z.mean(), z.std() / np.sqrt(len(z))
-    comps = [("figure + barrier", "figure"), ("figure + projection", "figure + barrier"),
-             ("figure + projection", "figure"), ("SP + figure + projection", "SP + figure"),
-             ("SP + figure + projection", "SP")]
-    _, b = fit_eval(e, e.iloc[:0], variants["figure + projection"])
-    L = ["# Race-day projection v2: walk-forward", "",
-         "- Every model fitted on 2019 to Y-1 and tested on year Y (VIC/SA/QLD races); v1 = previous version", "",
+    def diff(p, q, src):
+        z = src[p] - src[q]
+        return z.mean(), z.std() / np.sqrt(len(z)), len(z)
+    comps = [("figure + projection v2", "figure"), ("+ pace x style", "figure + projection v2"),
+             ("+ track bias", "figure + projection v2"), ("+ early position", "figure + projection v2"),
+             ("+ all three", "figure + projection v2"),
+             ("SP + figure + projection, all", "SP + figure + projection v2"),
+             ("SP + figure + projection, all", "SP")]
+    _, b = fit_eval(e, e.iloc[:0], variants["+ all three"])
+    L = ["# Race-day projection: walk-forward", "",
+         "- Every model fitted on 2019 to Y-1 and tested on year Y (VIC/SA/QLD races)",
+         "- v2 = settle / pace / ground-loss projections + WPR cost adjustment; additions: pace x running style,"
+         " track bias from past meetings, GPS early position (QLD)", "",
          "## Projection accuracy", "", a.to_markdown(floatfmt=".3f"), "",
          "## Cost of race shape in WPR points (within-race regression, by fold)", "",
-         pd.DataFrame(costs).to_markdown(floatfmt=".3f"),
-         "", "settle: per unit of settle share (leader 0 to last 1); pace: per unit of early shape x (1 - settle);"
-             " gl: per metre of extra ground", "",
+         pd.DataFrame(costs).to_markdown(floatfmt=".3f"), "",
+         "settle: leader (0) to last (1); pace: per unit of early shape x (1 - settle); gl: per metre of extra"
+         " ground; late_x: per unit of early shape x late-sectional strength vs field (lengths)", "",
+         f"Global settle / barrier slopes used for track bias (2019-2021): {x0.attrs['bias_global'][0]:.2f} /"
+         f" {x0.attrs['bias_global'][1]:.2f} WPR per unit share", "",
          "## Win model log loss (conditional logit)", "", t.T.to_markdown(floatfmt=".4f"), "",
-         "## Paired differences (pooled, negative = first is better)", "", "| model | vs | diff | se |",
-         "|---|---|---|---|"]
-    L += [f"| {p} | {q} | {diff(p, q)[0]:+.4f} | {diff(p, q)[1]:.4f} |" for p, q in comps]
-    L += ["", "## Projection terms in the figure + projection logit (fit on all 2022 on, raw units)", "",
-          "| feature | beta |", "|---|---|"] + \
-         [f"| {k} | {v:+.4f} |" for k, v in b.items() if k in OUT]
+         "## Paired differences (pooled; negative = first is better)", "",
+         "| model | vs | all: diff | se | QLD only: diff | se |", "|---|---|---|---|---|---|"]
+    for p_, q_ in comps:
+        d1, d2 = diff(p_, q_, pooled), diff(p_, q_, pq)
+        L.append(f"| {p_} | {q_} | {d1[0]:+.4f} | {d1[1]:.4f} | {d2[0]:+.4f} | {d2[1]:.4f} |")
+    L += ["", "## Projection terms in the '+ all three' logit (fit on all 2022 on, raw units)", "",
+          "| feature | beta |", "|---|---|"] + [f"| {k} | {v:+.4f} |" for k, v in b.items() if k in OUT]
     out = ROOT / "reports/projection_validation.md"
     out.write_text("\n".join(L) + "\n")
     print("\n".join(L))

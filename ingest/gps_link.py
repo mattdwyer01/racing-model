@@ -9,6 +9,8 @@ Every column except run_id/race_id/source is an in-race measurement (res_ prefix
                         (+ = covered more ground than the field)
     res_gps_rail_m      average distance from the rail over the race (m)
     res_gps_extra_l600_m  (RQ only) extra ground in the last 600m vs the field mean
+    res_gps_early200 / res_gps_early400  (RQ only) position at the first section at or past 200m / 400m
+                        from the start, as a share of tracked runners (0 = leader)
 A run is valid when it finished and distance travelled is within 0.98 to 1.06 of the
 official distance (drops GPS glitches, about 0.1%). Distance travelled is masked (rail kept) where
 it looks broken: see SUSPECT_DIST.
@@ -51,9 +53,18 @@ def _rq():
     s = s.join(agg["last_cum"], on=["race_code", "tab_no"])
     l600 = s[s["cum_dist_m"] > s["last_cum"] - 600].groupby(["race_code", "tab_no"])["real_dist_m"].sum(min_count=1)
     r = r.join(agg["rail_m"], on=["race_code", "tab_no"]).join(l600.rename("l600_m"), on=["race_code", "tab_no"])
+    ranked = s[s["rank"] > 0]
+    for mark in (200, 400):
+        at = ranked[ranked["cum_dist_m"] >= mark]
+        at = at[at["cum_dist_m"] == at.groupby("race_code")["cum_dist_m"].transform("min")]
+        n = at.groupby("race_code")["rank"].transform("count")
+        share = ((at["rank"] - 1) / (n - 1).clip(lower=1)).clip(0, 1)
+        r = r.join(pd.Series(share.to_numpy(), index=pd.MultiIndex.from_frame(at[["race_code", "tab_no"]]),
+                             name=f"early{mark}"), on=["race_code", "tab_no"])
     return pd.DataFrame({"source": "rq", "race_key": r["race_key"], "race_date": pd.to_datetime(r["race_date"]),
                          "venue": r["course"].map(venue), "horse": r["horse"],
-                         "dist_m": r["dist_travelled_m"], "rail_m": r["rail_m"], "l600_m": r["l600_m"]})
+                         "dist_m": r["dist_travelled_m"], "rail_m": r["rail_m"], "l600_m": r["l600_m"],
+                         "early200": r["early200"], "early400": r["early400"]})
 
 
 def _rc():
@@ -67,7 +78,7 @@ def _rc():
     return pd.DataFrame({"source": "rc", "race_key": "rc" + r["meet_code"].astype(str) + "_" + r["race_no"].astype(str),
                          "race_date": date, "venue": r["venue"].map(venue), "horse": r["horse"],
                          "dist_m": r["dist_travelled_m"], "rail_m": pd.to_numeric(r["rail_avg_m"], errors="coerce"),
-                         "l600_m": float("nan")})
+                         "l600_m": float("nan"), "early200": float("nan"), "early400": float("nan")})
 
 
 def build(con) -> int:
@@ -94,9 +105,10 @@ def build(con) -> int:
     m["extra_l600_m"] = m["l600_m"] - grp["l600_m"].transform("mean")
     m["n_gps"] = grp["dist_m"].transform("count")
     out = m.rename(columns={"dist_m": "res_gps_dist_m", "extra_m": "res_gps_extra_m", "rail_m": "res_gps_rail_m",
-                            "extra_l600_m": "res_gps_extra_l600_m"})
+                            "extra_l600_m": "res_gps_extra_l600_m", "early200": "res_gps_early200",
+                            "early400": "res_gps_early400"})
     out = out[["run_id", "race_id", "source", "n_gps", "res_gps_dist_m", "res_gps_extra_m",
-               "res_gps_rail_m", "res_gps_extra_l600_m"]].drop_duplicates("run_id")
+               "res_gps_rail_m", "res_gps_extra_l600_m", "res_gps_early200", "res_gps_early400"]].drop_duplicates("run_id")
     con.register("gps_df", out)
     con.execute("create or replace table gps_runs as select * from gps_df")
     con.unregister("gps_df")
