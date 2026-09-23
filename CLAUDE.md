@@ -18,6 +18,13 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   runners file, Apr 2026 on) and `tools/extract_prices_from_git.py` (git history of toprate_runners.csv).
 - Punting Form: dropped (no lift over SP in testing, borrowed login).
 
+## Future sources (not built)
+- NSW metro (ATC) Swiss Timing sectional PDFs:
+  `feed.australianturfclub.com.au/sectionals/swiss-timing/{year}/{DDMM}{TRACK}-{race}.pdf` (e.g. `1909RAND-1.pdf`).
+  Per horse: DT-W (distance travelled vs winner, m), barrier, 200m cumulative times with positions,
+  splits, top speed. No rail distance.
+- WA sectional workbooks: times only, no distance travelled. Skip.
+
 ## Rules
 - In `runs`, columns prefixed `res_` are in-race results: never inputs for the same race.
   TopRate `wpr` in the raw files is the rating OF that run (post-race).
