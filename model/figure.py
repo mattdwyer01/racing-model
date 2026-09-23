@@ -66,7 +66,7 @@ def components(con=None):
     fit_rows = d["race_date"].dt.year.between(2019, 2021)
     for c in ["s_early", "s_l600"]:
         d[c + "_miss"] = d[c].isna().astype(float)
-        m = fit_rows & d[c].notna()
+        m = fit_rows & d[c].notna() & d["wpr"].notna()
         X = np.c_[np.ones(m.sum()), d.loc[m, "wpr"], d.loc[m, "dist"] / 1000]
         b = np.linalg.lstsq(X, d.loc[m, c], rcond=None)[0]
         Xa = np.c_[np.ones(len(d)), d["wpr"], d["dist"] / 1000]
