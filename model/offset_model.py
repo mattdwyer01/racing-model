@@ -130,18 +130,19 @@ def _gbm_train(tr, va, offset, rounds=None, extra=None, feats=None):
     return lgb.train(params, dtr, rounds)
 
 
-def gbm_fit(tr, tune=False, feats=None):
+def gbm_fit(tr, tune=False, feats=None, market=True):
     """Pick rounds on the last 20% of train (by date), refit on all of train. Returns (predict fn, model, rounds)."""
     cut = tr["race_date"].quantile(0.8)
     inner, va = tr[tr.race_date <= cut], tr[tr.race_date > cut]
     inner = inner.assign(race=pd.factorize(inner["race_id"])[0])
     va = va.assign(race=pd.factorize(va["race_id"])[0])
-    off_in = _score_fn(inner)
+    zero = lambda df: np.zeros(len(df))   # noqa: E731  (market=False: trees from scratch, no SP)
+    off_in = _score_fn(inner) if market else zero
     feats = feats or GBM_FEATS
     trials = [(p, *_gbm_train(inner, va, off_in, extra=p, feats=feats)) for p in (GRID if tune else [{}])]
     best, rounds, score = min(trials, key=lambda t: t[2])
     rounds = max(rounds, 20)
-    off = _score_fn(tr)
+    off = _score_fn(tr) if market else zero
     m = _gbm_train(tr, None, off, rounds, extra=best, feats=feats)
     m.chosen = (best, rounds, {str(p): round(float(sc), 5) for p, _, sc in trials})
     return (lambda df: _softmax(m.predict(df[feats].to_numpy(float)) + off(df), df["race"].to_numpy())), m, rounds

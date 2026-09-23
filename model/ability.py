@@ -39,17 +39,19 @@ from runs r join races ra using (race_id) where not r.is_trial_or_jumpout
 """
 
 TRIAL_SQL = """
-with t as (
-  select r.horse_id, r.race_date tdate, r.res_finish, r.res_margin_l, ra.field_size
+with t as (   -- one row per horse per trial day (a horse can trial / jump out twice in a day)
+  select r.horse_id, r.race_date tdate,
+    min((r.res_finish - 1) / greatest(ra.field_size - 1, 1)) pos, min(r.res_margin_l) marg
   from runs r join races ra using (race_id) where r.is_trial_or_jumpout
+  group by 1, 2
 ), s as (
   select run_id, horse_id, race_date, prev_start_date from runs where not is_trial_or_jumpout
 )
 select s.run_id,
   (t.tdate > coalesce(s.prev_start_date, date '1900-01-01'))::int t_trial_since,
   (s.race_date - t.tdate) t_trial_days,
-  (t.res_finish - 1) / greatest(t.field_size - 1, 1) t_trial_pos,
-  least(coalesce(t.res_margin_l, 10), 10) t_trial_marg
+  t.pos t_trial_pos,
+  least(coalesce(t.marg, 10), 10) t_trial_marg
 from s asof left join t on s.horse_id = t.horse_id and s.race_date > t.tdate
 """
 
