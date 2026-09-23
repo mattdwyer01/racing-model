@@ -1,0 +1,376 @@
+track,venue,state,location_class,surface,in_scope
+Canberra,Canberra,ACT,P,Turf,False
+Canberra Acton,Canberra,ACT,P,Turf,False
+Adaminaby,Adaminaby,NSW,C,Turf,False
+Albury,Albury,NSW,C,Turf,False
+Ardlethan,Ardlethan,NSW,C,Turf,False
+Armidale,Armidale,NSW,C,Turf,False
+Ballina,Ballina,NSW,C,Turf,False
+Balranald,Balranald,NSW,C,Turf,False
+Barraba,Barraba,NSW,C,Turf,False
+Bathurst,Bathurst,NSW,C,Turf,False
+Beaumont,Newcastle,NSW,P,Turf,False
+Bedgerebong,Bedgerebong,NSW,C,Turf,False
+Berrigan,Berrigan,NSW,C,Turf,False
+Bingara,Bingara,NSW,C,Turf,False
+Binnaway,Binnaway,NSW,C,Turf,False
+Bombala,Bombala,NSW,C,Turf,False
+Bong Bong,Bong Bong,NSW,C,Turf,False
+Boorowa,Boorowa,NSW,C,Turf,False
+Bourke,Bourke,NSW,C,Turf,False
+Bowraville,Bowraville,NSW,C,Turf,False
+Braidwood,Braidwood,NSW,C,Turf,False
+Brewarrina,Brewarrina,NSW,C,Turf,False
+Broken Hill,Broken Hill,NSW,C,Turf,False
+Bundarra,Bundarra,NSW,C,Turf,False
+Canterbury,Canterbury,NSW,M,Turf,False
+Carinda,Carinda,NSW,C,Turf,False
+Carrathool,Carrathool,NSW,C,Turf,False
+Casino,Casino,NSW,C,Turf,False
+Cessnock,Cessnock,NSW,C,Turf,False
+Cobar,Cobar,NSW,C,Turf,False
+Coffs Harbour,Coffs Harbour,NSW,C,Turf,False
+Collarenebri,Collarenebri,NSW,C,Turf,False
+Come By Chance,Come By Chance,NSW,C,Turf,False
+Condobolin,Condobolin,NSW,C,Turf,False
+Cooma,Cooma,NSW,C,Turf,False
+Coonabarabran,Coonabarabran,NSW,C,Turf,False
+Coonamble,Coonamble,NSW,C,Turf,False
+Cootamundra,Cootamundra,NSW,C,Turf,False
+Corowa,Corowa,NSW,C,Turf,False
+Cowra,Cowra,NSW,C,Turf,False
+Crookwell,Crookwell,NSW,C,Turf,False
+Deepwater,Deepwater,NSW,C,Turf,False
+Deniliquin,Deniliquin,NSW,C,Turf,False
+Dubbo,Dubbo,NSW,C,Turf,False
+Enngonia,Enngonia,NSW,C,Turf,False
+Forbes,Forbes,NSW,C,Turf,False
+Geurie,Geurie,NSW,C,Turf,False
+Gilgandra,Gilgandra,NSW,C,Turf,False
+Glen Innes,Glen Innes,NSW,C,Turf,False
+Gosford,Gosford,NSW,P,Turf,False
+Goulburn,Goulburn,NSW,C,Turf,False
+Grafton,Grafton,NSW,C,Turf,False
+Grenfell,Grenfell,NSW,C,Turf,False
+Griffith,Griffith,NSW,C,Turf,False
+Gulargambone,Gulargambone,NSW,C,Turf,False
+Gulgong,Gulgong,NSW,C,Turf,False
+Gundagai,Gundagai,NSW,C,Turf,False
+Gunnedah,Gunnedah,NSW,C,Turf,False
+Harden,Harden,NSW,C,Turf,False
+Hawkesbury,Hawkesbury,NSW,P,Turf,False
+Hay,Hay,NSW,C,Turf,False
+Hillston,Hillston,NSW,C,Turf,False
+Holbrook,Holbrook,NSW,C,Turf,False
+Illawarra Grange,Kembla Grange,NSW,P,Turf,False
+Inverell,Inverell,NSW,C,Turf,False
+Jerilderie,Jerilderie,NSW,C,Turf,False
+Kembla Grange,Kembla Grange,NSW,P,Turf,False
+Kempsey,Kempsey,NSW,C,Turf,False
+Leeton,Leeton,NSW,C,Turf,False
+Lightning Ridge,Lightning Ridge,NSW,C,Turf,False
+Lismore,Lismore,NSW,C,Turf,False
+Lockhart,Lockhart,NSW,C,Turf,False
+Louth,Louth,NSW,C,Turf,False
+Mallawa,Mallawa,NSW,C,Turf,False
+Mendooran,Mendooran,NSW,C,Turf,False
+Merriwa,Merriwa,NSW,C,Turf,False
+Moree,Moree,NSW,C,Turf,False
+Moruya,Moruya,NSW,C,Turf,False
+Moulamein,Moulamein,NSW,C,Turf,False
+Mudgee,Mudgee,NSW,C,Turf,False
+Mungery,Mungery,NSW,C,Turf,False
+Mungindi,Mungindi,NSW,C,Turf,False
+Murwillumbah,Murwillumbah,NSW,C,Turf,False
+Muswellbrook,Muswellbrook,NSW,C,Turf,False
+Narrabri,Narrabri,NSW,C,Turf,False
+Narrandera,Narrandera,NSW,C,Turf,False
+Narromine,Narromine,NSW,C,Turf,False
+Newcastle,Newcastle,NSW,P,Turf,False
+Nowra,Nowra,NSW,C,Turf,False
+Nyngan,Nyngan,NSW,C,Turf,False
+Orange,Orange,NSW,C,Turf,False
+Parkes,Parkes,NSW,C,Turf,False
+Pooncarie,Pooncarie,NSW,C,Turf,False
+Port Macquarie,Port Macquarie,NSW,C,Turf,False
+Quambone,Quambone,NSW,C,Turf,False
+Queanbeyan,Queanbeyan,NSW,C,Turf,False
+Quirindi,Quirindi,NSW,C,Turf,False
+Randwick,Randwick,NSW,M,Turf,False
+Randwick-Kensington,Randwick,NSW,M,Turf,False
+Rosehill,Rosehill,NSW,M,Turf,False
+Sapphire Coast,Sapphire Coast,NSW,C,Turf,False
+Scone,Scone,NSW,C,Turf,False
+Tabulam,Tabulam,NSW,C,Turf,False
+Talmoi,Talmoi,NSW,C,Turf,False
+Tamworth,Tamworth,NSW,C,Turf,False
+Taree,Taree,NSW,C,Turf,False
+Tocumwal,Tocumwal,NSW,C,Turf,False
+Tomingley,Tomingley,NSW,C,Turf,False
+Tottenham,Tottenham,NSW,C,Turf,False
+Trangie,Trangie,NSW,C,Turf,False
+Tullibigeal,Tullibigeal,NSW,C,Turf,False
+Tumbarumba,Tumbarumba,NSW,C,Turf,False
+Tumut,Tumut,NSW,C,Turf,False
+Tuncurry,Tuncurry,NSW,C,Turf,False
+Wagga,Wagga,NSW,C,Turf,False
+Wagga Riverside,Wagga,NSW,C,Turf,False
+Walcha,Walcha,NSW,C,Turf,False
+Walgett,Walgett,NSW,C,Turf,False
+Warialda,Warialda,NSW,C,Turf,False
+Warren,Warren,NSW,C,Turf,False
+Warwick Farm,Warwick Farm,NSW,M,Turf,False
+Wauchope,Wauchope,NSW,C,Turf,False
+Wean,Wean,NSW,C,Turf,False
+Wellington,Wellington,NSW,C,Turf,False
+Wentworth,Wentworth,NSW,C,Turf,False
+Wyong,Wyong,NSW,P,Turf,False
+Yass,Yass,NSW,C,Turf,False
+Young,Young,NSW,C,Turf,False
+Fannie Bay,Fannie Bay,NT,P,Turf,False
+Katherine,Katherine,NT,C,Turf,False
+Pioneer Park,Pioneer Park,NT,P,Turf,False
+Tennant Creek,Tennant Creek,NT,C,Turf,False
+Alpha,Alpha,QLD,C,Turf,True
+Aramac,Aramac,QLD,C,Turf,True
+Atherton,Atherton,QLD,C,Turf,True
+Augathella,Augathella,QLD,C,Turf,True
+Barcaldine,Barcaldine,QLD,C,Turf,True
+Beaudesert,Beaudesert,QLD,C,Turf,True
+Bedourie,Bedourie,QLD,C,Turf,True
+Bell,Bell,QLD,C,Turf,True
+Betoota,Betoota,QLD,C,Turf,True
+Birdsville,Birdsville,QLD,C,Turf,True
+Blackall,Blackall,QLD,C,Turf,True
+Bluff,Bluff,QLD,C,Turf,True
+Bowen,Bowen,QLD,C,Turf,True
+Bundaberg,Bundaberg,QLD,C,Turf,True
+Burrandowan,Burrandowan,QLD,C,Turf,True
+Cairns,Cairns,QLD,C,Turf,True
+Calliope,Calliope,QLD,C,Turf,True
+Charleville,Charleville,QLD,C,Turf,True
+Charters Towers,Charters Towers,QLD,C,Turf,True
+Chinchilla,Chinchilla,QLD,C,Turf,True
+Clermont,Clermont,QLD,C,Turf,True
+Clifton,Clifton,QLD,C,Turf,True
+Cloncurry,Cloncurry,QLD,C,Turf,True
+Cooktown,Cooktown,QLD,C,Turf,True
+Corfield,Corfield,QLD,C,Turf,True
+Cunnamulla,Cunnamulla,QLD,C,Turf,True
+Dalby,Dalby,QLD,C,Turf,True
+Dingo,Dingo,QLD,C,Turf,True
+Doomben,Doomben,QLD,M,Turf,True
+Eagle Farm,Eagle Farm,QLD,M,Turf,True
+Eidsvold,Eidsvold,QLD,C,Turf,True
+Einasleigh,Einasleigh,QLD,C,Turf,True
+Emerald,Emerald,QLD,C,Turf,True
+Esk,Esk,QLD,P,Turf,True
+Ewan,Ewan,QLD,C,Turf,True
+Flinton,Flinton,QLD,C,Turf,True
+Gatton,Gatton,QLD,P,Turf,True
+Gayndah,Gayndah,QLD,C,Turf,True
+Gladstone,Gladstone,QLD,C,Turf,True
+Gold Coast,Gold Coast,QLD,P,Turf,True
+Gold Coast Poly,Gold Coast,QLD,P,Synthetic,True
+Goondiwindi,Goondiwindi,QLD,C,Turf,True
+Gordonvale,Gordonvale,QLD,C,Turf,True
+Gregory Downs,Gregory Downs,QLD,C,Turf,True
+Gympie,Gympie,QLD,C,Turf,True
+Home Hill,Home Hill,QLD,C,Turf,True
+Hughenden,Hughenden,QLD,C,Turf,True
+Ilfracombe,Ilfracombe,QLD,C,Turf,True
+Ingham,Ingham,QLD,C,Turf,True
+Injune,Injune,QLD,C,Turf,True
+Innisfail,Innisfail,QLD,C,Turf,True
+Ipswich,Ipswich,QLD,P,Turf,True
+Isisford,Isisford,QLD,C,Turf,True
+Jandowae,Jandowae,QLD,C,Turf,True
+Julia Creek,Julia Creek,QLD,C,Turf,True
+Jundah,Jundah,QLD,C,Turf,True
+Kilcoy,Kilcoy,QLD,C,Turf,True
+Kumbia,Kumbia,QLD,C,Turf,True
+Laura,Laura,QLD,C,Turf,True
+Longreach,Longreach,QLD,C,Turf,True
+Mackay,Mackay,QLD,C,Turf,True
+Mareeba,Mareeba,QLD,C,Turf,True
+Maxwelton,Maxwelton,QLD,C,Turf,True
+McKinlay,McKinlay,QLD,C,Turf,True
+Middlemount,Middlemount,QLD,C,Turf,True
+Miles,Miles,QLD,C,Turf,True
+Mitchell,Mitchell,QLD,C,Turf,True
+Monto,Monto,QLD,C,Turf,True
+Moranbah,Moranbah,QLD,C,Turf,True
+Morven,Morven,QLD,C,Turf,True
+Mt Garnet,Mt Garnet,QLD,C,Turf,True
+Mt Isa,Mt Isa,QLD,C,Turf,True
+Mt Perry,Mt Perry,QLD,C,Turf,True
+Muttaburra,Muttaburra,QLD,C,Turf,True
+Nanango,Nanango,QLD,C,Turf,True
+Noorama,Noorama,QLD,C,Turf,True
+Oak Park,Oak Park,QLD,C,Turf,True
+Pentland,Pentland,QLD,C,Turf,True
+Prairie,Prairie,QLD,C,Turf,True
+Quilpie,Quilpie,QLD,C,Turf,True
+Richmond,Richmond,QLD,C,Turf,True
+Rockhampton,Rockhampton,QLD,C,Turf,True
+Roma,Roma,QLD,C,Turf,True
+Springsure,Springsure,QLD,C,Turf,True
+St George,St George,QLD,C,Turf,True
+Stamford,Stamford,QLD,C,Turf,True
+Stanthorpe,Stanthorpe,QLD,C,Turf,True
+Sunshine Coast,Sunshine Coast,QLD,P,Turf,True
+Sunshine Coast Poly,Sunshine Coast,QLD,P,Synthetic,True
+Surat,Surat,QLD,C,Turf,True
+Talwood,Talwood,QLD,C,Turf,True
+Tambo,Tambo,QLD,C,Turf,True
+Tara,Tara,QLD,C,Turf,True
+Taroom,Taroom,QLD,C,Turf,True
+Texas,Texas,QLD,C,Turf,True
+Thangool,Thangool,QLD,C,Turf,True
+Toowoomba,Toowoomba,QLD,P,Turf,True
+Townsville,Townsville,QLD,C,Turf,True
+Twin Hills,Twin Hills,QLD,C,Turf,True
+Wandoan,Wandoan,QLD,C,Turf,True
+Warra,Warra,QLD,C,Turf,True
+Warwick,Warwick,QLD,C,Turf,True
+Winton,Winton,QLD,C,Turf,True
+Wondai,Wondai,QLD,C,Turf,True
+Yeppoon,Yeppoon,QLD,C,Turf,True
+Balaklava,Balaklava,SA,P,Turf,True
+Bordertown,Bordertown,SA,C,Turf,True
+Ceduna,Ceduna,SA,C,Turf,True
+Clare,Clare,SA,C,Turf,True
+Gawler,Gawler,SA,P,Turf,True
+Halidon,Halidon,SA,C,Turf,True
+Hawker,Hawker,SA,C,Turf,True
+Jamestown,Jamestown,SA,C,Turf,True
+Kingscote,Kingscote,SA,C,Turf,True
+Lock,Lock,SA,C,Turf,True
+Morphettville,Morphettville,SA,M,Turf,True
+Morphettville Parks,Morphettville,SA,M,Turf,True
+Mt Gambier,Mt Gambier,SA,C,Turf,True
+Murray Bridge,Murray Bridge,SA,C,Turf,True
+Murray Bridge GH,Murray Bridge GH,SA,P,Turf,True
+Naracoorte,Naracoorte,SA,C,Turf,True
+Oakbank,Oakbank,SA,P,Turf,True
+Penola,Penola,SA,C,Turf,True
+Penong,Penong,SA,C,Turf,True
+Port Augusta,Port Augusta,SA,C,Turf,True
+Port Lincoln,Port Lincoln,SA,P,Turf,True
+Quorn,Quorn,SA,C,Turf,True
+Roxby Downs,Roxby Downs,SA,C,Turf,True
+Strathalbyn,Strathalbyn,SA,P,Turf,True
+Streaky Bay,Streaky Bay,SA,C,Turf,True
+Devonport Synthetic,Devonport,TAS,C,Synthetic,False
+Hobart,Hobart,TAS,P,Turf,False
+King Island,King Island,TAS,C,Turf,False
+Launceston,Launceston,TAS,P,Turf,False
+Longford,Longford,TAS,C,Turf,False
+Alexandra,Alexandra,VIC,C,Turf,True
+Ararat,Ararat,VIC,C,Turf,True
+Avoca,Avoca,VIC,C,Turf,True
+Bairnsdale,Bairnsdale,VIC,C,Turf,True
+Ballarat,Ballarat,VIC,P,Turf,True
+Ballarat Synthetic,Ballarat,VIC,P,Synthetic,True
+Balnarring,Balnarring,VIC,C,Turf,True
+Benalla,Benalla,VIC,C,Turf,True
+Bendigo,Bendigo,VIC,P,Turf,True
+Buchan,Buchan,VIC,C,Turf,True
+Burrumbeet,Burrumbeet,VIC,C,Turf,True
+Camperdown,Camperdown,VIC,C,Turf,True
+Casterton,Casterton,VIC,C,Turf,True
+Caulfield,Caulfield,VIC,M,Turf,True
+Caulfield Heath,Caulfield,VIC,M,Turf,True
+Colac,Colac,VIC,P,Turf,True
+Coleraine,Coleraine,VIC,C,Turf,True
+Cranbourne,Cranbourne,VIC,P,Turf,True
+Dederang,Dederang,VIC,C,Turf,True
+Donald,Donald,VIC,C,Turf,True
+Drouin,Drouin,VIC,C,Turf,True
+Dunkeld,Dunkeld,VIC,C,Turf,True
+Echuca,Echuca,VIC,C,Turf,True
+Edenhope,Edenhope,VIC,C,Turf,True
+Flemington,Flemington,VIC,M,Turf,True
+Geelong,Geelong,VIC,P,Turf,True
+Geelong Synthetic,Geelong,VIC,P,Synthetic,True
+Great Western,Great Western,VIC,C,Turf,True
+Gunbower,Gunbower,VIC,C,Turf,True
+Hamilton,Hamilton,VIC,C,Turf,True
+Hanging Rock,Hanging Rock,VIC,C,Turf,True
+Healesville,Healesville,VIC,C,Turf,True
+Hinnomunjie,Hinnomunjie,VIC,C,Turf,True
+Horsham,Horsham,VIC,C,Turf,True
+Kerang,Kerang,VIC,C,Turf,True
+Kilmore,Kilmore,VIC,P,Turf,True
+Kyneton,Kyneton,VIC,P,Turf,True
+Manangatang,Manangatang,VIC,C,Turf,True
+Mansfield,Mansfield,VIC,C,Turf,True
+Merton,Merton,VIC,C,Turf,True
+Mildura,Mildura,VIC,C,Turf,True
+Moe,Moe,VIC,C,Turf,True
+Moonee Valley,Moonee Valley,VIC,M,Turf,True
+Mornington,Mornington,VIC,P,Turf,True
+Mortlake,Mortlake,VIC,C,Turf,True
+Murtoa,Murtoa,VIC,C,Turf,True
+Nhill,Nhill,VIC,C,Turf,True
+Pakenham,Pakenham,VIC,P,Turf,True
+Pakenham Synthetic,Pakenham,VIC,P,Synthetic,True
+Penshurst,Penshurst,VIC,C,Turf,True
+Sale,Sale,VIC,P,Turf,True
+Sandown-Hillside,Sandown,VIC,M,Turf,True
+Sandown-Lakeside,Sandown,VIC,M,Turf,True
+Seymour,Seymour,VIC,P,Turf,True
+St Arnaud,St Arnaud,VIC,C,Turf,True
+Stawell,Stawell,VIC,C,Turf,True
+Stony Creek,Stony Creek,VIC,C,Turf,True
+Swan Hill,Swan Hill,VIC,C,Turf,True
+Swifts Creek,Swifts Creek,VIC,C,Turf,True
+Tatura,Tatura,VIC,C,Turf,True
+Terang,Terang,VIC,C,Turf,True
+Towong,Towong,VIC,C,Turf,True
+Traralgon,Traralgon,VIC,P,Turf,True
+Wangaratta,Wangaratta,VIC,C,Turf,True
+Warracknabeal,Warracknabeal,VIC,C,Turf,True
+Warrnambool,Warrnambool,VIC,P,Turf,True
+Werribee,Werribee,VIC,P,Turf,True
+Wodonga,Wodonga,VIC,C,Turf,True
+Woolamai,Woolamai,VIC,C,Turf,True
+Wycheproof,Wycheproof,VIC,C,Turf,True
+Yarra Glen,Yarra Glen,VIC,P,Turf,True
+Yea,Yea,VIC,C,Turf,True
+Albany,Albany,WA,P,Turf,False
+Ascot,Ascot,WA,M,Turf,False
+Belmont Park,Belmont Park,WA,M,Turf,False
+Broome,Broome,WA,C,Turf,False
+Bunbury,Bunbury,WA,P,Turf,False
+Bunbury Fibre Sand,Bunbury,WA,P,Turf,False
+Carnarvon,Carnarvon,WA,C,Turf,False
+Collie,Collie,WA,C,Turf,False
+Derby,Derby,WA,C,Turf,False
+Dongara,Dongara,WA,C,Turf,False
+Esperance,Esperance,WA,C,Turf,False
+Geraldton,Geraldton,WA,C,Turf,False
+Junction,Junction,WA,C,Turf,False
+Kalgoorlie,Kalgoorlie,WA,P,Turf,False
+Kojonup,Kojonup,WA,C,Turf,False
+Kununurra,Kununurra,WA,C,Turf,False
+Landor,Landor,WA,C,Turf,False
+Laverton,Laverton,WA,C,Turf,False
+Leinster,Leinster,WA,C,Turf,False
+Leonora,Leonora,WA,C,Turf,False
+Marble Bar,Marble Bar,WA,C,Turf,False
+Mingenew,Mingenew,WA,C,Turf,False
+Moora,Moora,WA,C,Turf,False
+Mt Barker,Mt Barker,WA,P,Turf,False
+Mt Magnet,Mt Magnet,WA,C,Turf,False
+Mt Newman,Mt Newman,WA,C,Turf,False
+Narrogin,Narrogin,WA,P,Turf,False
+Northam,Northam,WA,P,Turf,False
+Pingrup,Pingrup,WA,C,Turf,False
+Pinjarra,Pinjarra,WA,P,Turf,False
+Pinjarra Scarpside,Pinjarra,WA,P,Turf,False
+Port Hedland,Port Hedland,WA,C,Turf,False
+Rockingham,Rockingham,WA,C,Turf,False
+Roebourne,Roebourne,WA,C,Turf,False
+Toodyay,Toodyay,WA,P,Turf,False
+York,York,WA,P,Turf,False
