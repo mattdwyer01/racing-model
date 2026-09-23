@@ -1,0 +1,168 @@
+"""Production model: conditional logit on figure + ability + jockey/trainer + race-day projection + run comments,
+blended with the market, and expressed in WPR points so every horse's rating can be read as
+ability + bonuses / penalties.
+
+    python model/production.py --train-end 2026-01-01      # train, save data/models/logit_<date>.pkl,
+                                                            # write reports/logit_wpr_table.md
+
+Training (all on races before train_end):
+  logit weights  conditional logit on COLS (standardised inside the fit)
+  blend weights  logit fitted on the first 75% of training dates predicts the last 25%; there we fit
+                 blend = softmax(a * log p_model + b * log p_market) and calibrated market = softmax(c * log p_market)
+WPR points: the logit's utility is sum_k beta_k x_k. One WPR point of ability = +1 on every ability-level input
+(WPR_LEVEL: decayed WPR, decayed figure, last / best figures) at once, worth U = sum of their betas. So each
+input's weight in WPR points is beta_k / U, and a horse's contribution vs the field is beta_k (x_k - field mean) / U.
+"""
+import argparse
+import pickle
+import sys
+from pathlib import Path
+
+import duckdb
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from model import clogit, extra_history, figure  # noqa: E402
+from model import offset_model as om  # noqa: E402
+
+COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS))
+WPR_LEVEL = ["h_wpr", "dm", "fig_last", "best3", "best10", "mean3"]
+GROUPS = {
+    "ability": WPR_LEVEL + ["h_class", "log_n", "h_none", "h_last_wpr"],
+    "form shape": ["trend", "h_s_early", "h_s_l600", "h_s_early_miss", "h_settle", "h_shape", "h_pace",
+                   "h_settle_miss", "h_wt_rel"],
+    "distance / going": ["dist_ratio", "dist_abs", "dist_fit", "going_fit", "surface_fit"],
+    "prep": ["fu", "su", "up3", "fu_apt", "su_apt", "log_days", "first_up", "trial_since", "trial_pos",
+             "trial_marg", "trial_pos_debut", "trial_marg_debut"],
+    "race-day projection": ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl",
+                            "proj_adj", "tdx_settle", "tdx_perf", "early_rank2", "wide_x_slow", "nb_diff_in",
+                            "nb_diff_out"],
+    "track bias": ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "bias_adj"],
+    "jockey / trainer": ["j_ae", "j_sr", "j90_ae", "t_ae", "t_sr", "c_ae", "tfu_ae", "h_ae", "j_change", "j_upgrade"],
+    "comments": extra_history.CM_FEATS,
+    "age / sex / weight": ["age2", "age3", "age7", "female", "wt_rel_today"],
+}
+MODELS = ROOT / "data/models"
+
+
+def group_of(c):
+    for g, cs in GROUPS.items():
+        if c in cs:
+            return g
+    return "other"
+
+
+def _race(df):
+    return df.assign(race=pd.factorize(df["race_id"])[0])
+
+
+def _fit_raw(tr, cols):
+    """Conditional logit; returns raw-unit betas (utility = X @ beta, up to a per-race constant)."""
+    mu, sd = tr[cols].mean(), tr[cols].std().replace(0, 1)
+    b = clogit.fit(((tr[cols] - mu) / sd).to_numpy(float), tr["race"].to_numpy(), tr["won"].to_numpy())
+    return pd.Series(b / sd.to_numpy(), index=cols)
+
+
+def utility(df, beta):
+    return df[beta.index].to_numpy(float) @ beta.to_numpy()
+
+
+def train(con, train_end, e=None):
+    e = e if e is not None else om.add_context(om.build(con, train_end))
+    tr = _race(e[e.race_date < train_end].copy())
+    cut = tr["race_date"].quantile(0.75)
+    inner, bl = _race(tr[tr.race_date <= cut].copy()), _race(tr[tr.race_date > cut].copy())
+    b_in = _fit_raw(inner, COLS)
+    p_bl = np.clip(om._softmax(utility(bl, b_in), bl["race"].to_numpy()), 1e-12, 1)
+    a, b = clogit.fit(np.c_[np.log(p_bl), bl["log_p_sp"].to_numpy(float)], bl["race"].to_numpy(), bl["won"].to_numpy())
+    c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
+    beta = _fit_raw(tr, COLS)
+    unit = beta[WPR_LEVEL].sum()
+    m = {"train_end": str(train_end)[:10], "beta": beta, "wpr_unit": unit, "a": a, "b": b, "c": c,
+         "blend_window": f"{bl.race_date.min():%d %b %Y} to {bl.race_date.max():%d %b %Y}"}
+    return m, e
+
+
+def wpr_table(m):
+    t = pd.DataFrame({"beta": m["beta"], "WPR points per unit": m["beta"] / m["wpr_unit"]})
+    t["group"] = [group_of(c) for c in t.index]
+    return t.sort_values(["group", "WPR points per unit"])
+
+
+def card(m, race_df, market="log_p_sp"):
+    """Per-horse breakdown for one or more races: WPR-point contributions vs the field, by group, and prices."""
+    df = _race(race_df.sort_values(["race_id", "barrier_pct"]).copy())
+    X = df[m["beta"].index].astype(float)
+    Xd = X - X.groupby(df["race_id"].to_numpy()).transform("mean")
+    contrib = Xd * m["beta"] / m["wpr_unit"]
+    out = pd.DataFrame(index=df.index)
+    for g in list(GROUPS) + ["other"]:
+        cols = [c for c in contrib.columns if group_of(c) == g]
+        if cols:
+            out[g] = contrib[cols].sum(1)
+    out["rating vs field"] = contrib.sum(1)
+    race = df["race"].to_numpy()
+    p_model = om._softmax(utility(df, m["beta"]), race)
+    out["model %"] = 100 * p_model
+    out["model $"] = 1 / p_model
+    if market in df and df[market].notna().all():
+        p_mkt = om._softmax(m["c"] * df[market].to_numpy(float), race)
+        p_blend = om._softmax(m["a"] * np.log(np.clip(p_model, 1e-12, 1)) + m["b"] * df[market].to_numpy(float), race)
+        out["market $ (calibrated)"] = 1 / p_mkt
+        out["blend %"] = 100 * p_blend
+        out["blend $"] = 1 / p_blend
+        out["SP"] = df["sp"]
+        out["edge vs SP"] = p_blend * df["sp"] - 1
+    return pd.concat([df[["race_id", "run_id", "horse_id"]], out], axis=1)
+
+
+def save(m):
+    MODELS.mkdir(parents=True, exist_ok=True)
+    p = MODELS / f"logit_{m['train_end']}.pkl"
+    with p.open("wb") as f:
+        pickle.dump(m, f)
+    return p
+
+
+def load(train_end):
+    with (MODELS / f"logit_{train_end}.pkl").open("rb") as f:
+        return pickle.load(f)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--train-end", default="2026-01-01")
+    ap.add_argument("--folds", nargs="*", default=["2023-01-01", "2024-01-01", "2025-01-01", "2026-01-01"],
+                    help="training cut-offs for the stability table")
+    a = ap.parse_args()
+    con = duckdb.connect(str(figure.DB), read_only=True)
+    tabs = {}
+    for te in a.folds:
+        m, _ = train(con, te)
+        tabs[te[:4]] = wpr_table(m)["WPR points per unit"]
+        if te == a.train_end:
+            main_m = m
+        print(te, "done", flush=True)
+    if a.train_end not in a.folds:
+        main_m, _ = train(con, a.train_end)
+    p = save(main_m)
+    t = wpr_table(main_m).join(pd.DataFrame(tabs).add_prefix("fit to "), how="left")
+    L = ["# Production logit in WPR points", "",
+         f"- Model: conditional logit on {len(COLS)} inputs (figure, ability, jockey/trainer, race-day projection, run"
+         " comments); saved to " + str(p.relative_to(ROOT)),
+         f"- Trained on races before {main_m['train_end']}. One WPR point of ability = {main_m['wpr_unit']:.4f} utility",
+         f"- Blend with the market: a = {main_m['a']:.3f} (model), b = {main_m['b']:.3f} (market); calibrated market"
+         f" c = {main_m['c']:.3f}; fitted on {main_m['blend_window']}",
+         "- 'WPR points per unit': the bonus / penalty for +1 on that input, holding the others; a horse's contribution"
+         " is that times (its value minus the field average)",
+         "- 'fit to YYYY' columns: the same weights fitted on races before that year (stability)", "",
+         t.to_markdown(floatfmt=".3f")]
+    out = ROOT / "reports/logit_wpr_table.md"
+    out.write_text("\n".join(L) + "\n")
+    print("\n".join(L[:8]))
+
+
+if __name__ == "__main__":
+    main()
