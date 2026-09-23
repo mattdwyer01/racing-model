@@ -2,8 +2,8 @@
 
 Past runs (fitted on races before train_end only):
   position  at the 800m, from position and margin: lead, <=1.5L, 1.5-3L, 3-5L, 5-8L, 8L+ back (all states)
-  width     around the turn (mean GPS distance from the rail, 800m to 200m from home): fence (<2m),
-            1 wide (2-3.5m), 2 wide (3.5-5m), 3+ wide (5m+)  (QLD GPS only)
+  width     QLD: mean GPS distance from the rail 800m to 200m from home; VIC/SA: racing.com whole-race average
+            (Triple S only): fence (<2m), 1 wide (2-3.5m), 2 wide (3.5-5m), 3+ wide (5m+)
   pace      race early shape: slow (< -2), even, fast (> 2)
   value     WPR minus the horse's pre-race decayed WPR, demeaned within the race; recency weight half-life 2 years
   pooling   V = global[pos, pace] + track + track x distance band + going band + track x rail band, each level fitted
@@ -46,7 +46,14 @@ def _pos_bucket(pos, marg):
 
 
 def _width(con, runs):
-    """Mean GPS distance from the rail 800m to 200m from home, per run_id (QLD)."""
+    """Width per run_id: QLD = mean GPS distance from the rail 800m to 200m from home; VIC/SA (racing.com Triple S)
+    = the whole-race average distance from the rail (the only width measure it gives)."""
+    rc = con.sql("select run_id, res_gps_rail_m from gps_runs where source = 'rc' and res_gps_rail_m is not null").df()
+    rc = rc.set_index("run_id")["res_gps_rail_m"]
+    return pd.concat([_width_rq(con), rc])
+
+
+def _width_rq(con):
     from model.extra_history import SECTIONS
     if not SECTIONS.exists():
         return pd.Series(dtype=float)

@@ -24,7 +24,12 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 INTERIM = ROOT / "data/interim"
 
-COURSE_TO_VENUE = {"Ladbrokes Cannon Park": "Cairns"}
+COURSE_TO_VENUE = {"Ladbrokes Cannon Park": "Cairns", "The Valley": "Moonee Valley", "Murray Bridge": "Murray Bridge GH",
+                   "Hillside": "Sandown", "Lakeside": "Sandown", "Sandown Hillside": "Sandown",
+                   "Sandown Lakeside": "Sandown", "Yarra Valley": "Yarra Glen", "Spendthrift Australia Park": "Werribee"}
+RC_PREFIX = r"^(Sportsbet-|Sportsbet |bet365 Park |bet365 |Ladbrokes Park |Ladbrokes |Picklebet Park |TAB Park |Apiam |" \
+            r"Thomas Farms RC |Southside |BetDeluxe )"
+RC_SUFFIX = r"\s+(Synthetic|Heath|Parks)$"
 RATIO_OK = (0.98, 1.06)
 # RQ distance travelled stops tracking barrier and settle at these tracks from early 2026
 # (corr with barrier 0.3-0.4 -> 0 or negative) while rail distance stays sane: mask extra ground there.
@@ -34,7 +39,9 @@ SUSPECT_DIST = {("Doomben", "2026-01-01"), ("Ipswich", "2026-01-01")}
 def venue(course: str) -> str:
     c = COURSE_TO_VENUE.get(course, course) or ""
     c = re.sub(r"^(Aquis Park|Picklebet Park)\s+", "", c)
-    return re.sub(r"\s+Poly(\s+Track)?$", "", c)
+    c = re.sub(r"\s+Poly(\s+Track)?$", "", c)
+    c = re.sub(RC_SUFFIX, "", re.sub(RC_PREFIX, "", c))        # racing.com sponsor names (VIC/SA)
+    return COURSE_TO_VENUE.get(c, c)
 
 
 def horse_key(s: pd.Series) -> pd.Series:
@@ -81,7 +88,9 @@ def _rc():
                          "src_race": r["meet_code"].astype(str) + "_" + r["race_no"].astype(str),
                          "tab_no": pd.to_numeric(r["tab_no"], errors="coerce"),
                          "race_date": date, "venue": r["venue"].map(venue), "horse": r["horse"],
-                         "dist_m": r["dist_travelled_m"], "rail_m": pd.to_numeric(r["rail_avg_m"], errors="coerce"),
+                         # only Triple S timing measures distance travelled / rail; 'dailysectionals' rows have 0
+                         "dist_m": r["dist_travelled_m"].where(r["timing_source"] == "TripleS"),
+                         "rail_m": pd.to_numeric(r["rail_avg_m"], errors="coerce").where(r["timing_source"] == "TripleS"),
                          "l600_m": float("nan"), "early200": float("nan"), "early400": float("nan")})
 
 

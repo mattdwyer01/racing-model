@@ -24,6 +24,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 SECTIONS = ROOT / "data/interim/rq_gps_sections.parquet"
+RC_SECTIONS = ROOT / "data/interim/rc_gps_sections.parquet"
+RC_RUNS = ROOT / "data/interim/rc_gps_runs.parquet"
 K = 6
 GX = ["late400", "late200", "early400", "top_rel", "top_at", "trouble", "stride_rel", "stride_late", "pos_gain"]
 STEW = {"slow": r"awkward|slow|began poorly|dwelt|missed the start|blundered",
@@ -40,9 +42,57 @@ TAG_PRIOR_N = 50
 # ---------------------------------------------------------------- per-run measurements
 
 def gps_runs(con):
-    """Per-run GPS measurements (res_gx_*), keyed by run_id. Empty frame if no sections file."""
-    if not SECTIONS.exists():
+    """Per-run GPS measurements (res_gx_*), keyed by run_id: RQ (QLD) and racing.com (VIC/SA) sections."""
+    parts = [p for p in (_rq_gps_runs(con), _rc_gps_runs(con)) if p is not None and len(p)]
+    if not parts:
         return pd.DataFrame(columns=["run_id"] + ["res_gx_" + c for c in GX])
+    return pd.concat(parts, ignore_index=True).drop_duplicates("run_id")
+
+
+def _rc_gps_runs(con):
+    """racing.com sections: 200m splits with position and speed (no stride / per-section rail).
+    from_m / to_m are metres to go; the first section includes the standing start (relative speed still valid)."""
+    if not RC_SECTIONS.exists():
+        return None
+    s = pd.read_parquet(RC_SECTIONS)
+    s = s[s["avg_speed_ms"].notna() & (s["avg_speed_ms"] > 3) & s["to_m"].notna()].copy()
+    s["race_code"] = s["meet_code"].astype(str) + "_" + s["race_no"].astype(str)
+    key = con.sql("select run_id, src_race race_code, tab_no from gps_runs where source = 'rc'").df()
+    s = s.merge(key, on=["race_code", "tab_no"])
+    g = s.groupby(["race_code", "to_m"])
+    s["rel"] = s["avg_speed_ms"] / g["avg_speed_ms"].transform("median") - 1
+    s["start"] = s.groupby("run_id")["from_m"].transform("max")
+    h = s.groupby("run_id")
+    out = pd.DataFrame({
+        "late400": s[s["to_m"] < 400].groupby("run_id")["rel"].mean(),
+        "late200": s[s["to_m"] == 0].groupby("run_id")["rel"].mean(),
+        "early400": s[s["from_m"] >= s["start"] - 200].groupby("run_id")["rel"].mean(),
+    })
+    r = pd.read_parquet(RC_RUNS, columns=["meet_code", "race_no", "tab_no", "speed_peak_ms", "peak_at", "race_distance"])
+    r["race_code"] = r["meet_code"].astype(str) + "_" + r["race_no"].astype(str)
+    r = r.merge(key, on=["race_code", "tab_no"])
+    peak = r.set_index("run_id")["speed_peak_ms"].where(lambda v: v > 5)
+    race_of = r.set_index("run_id")["race_code"]
+    out["top_rel"] = peak / peak.groupby(race_of).transform("median") - 1
+    togo = pd.to_numeric(r.set_index("run_id")["peak_at"].str.extract(r"(\d+)", expand=False), errors="coerce")
+    dist = pd.to_numeric(r.set_index("run_id")["race_distance"].str.extract(r"(\d+)", expand=False), errors="coerce")
+    out["top_at"] = (1 - togo / dist).clip(0, 1)
+    s = s.sort_values(["run_id", "to_m"], ascending=[True, False])
+    s["drop"] = s.groupby("run_id")["rel"].shift(1) - s["rel"]
+    mid = (s["from_m"] < s["start"] - 200) & (s["to_m"] > 0)
+    out["trouble"] = s[mid].groupby("run_id")["drop"].max()
+    p400 = s[s["to_m"] == 400].groupby("run_id")["pos"].first()
+    pfin = s[s["to_m"] == 0].groupby("run_id")["pos"].first()
+    out["pos_gain"] = (p400 - pfin).where(p400 > 0)
+    out["stride_rel"], out["stride_late"] = np.nan, np.nan
+    for c in ["late400", "late200", "early400", "top_rel", "trouble"]:
+        out[c] = out[c].clip(-0.3, 0.3)
+    return out[GX].add_prefix("res_gx_").reset_index()
+
+
+def _rq_gps_runs(con):
+    if not SECTIONS.exists():
+        return None
     s = pd.read_parquet(SECTIONS)
     s = s[s["avg_speed_ms"].notna() & (s["avg_speed_ms"] > 5)].copy()
     s["race_code"] = s["race_code"].astype(str)
