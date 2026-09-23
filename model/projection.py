@@ -75,6 +75,11 @@ GLOBALS = {}   # global slopes fitted on 2019-2021 (set by frame)
 
 # ---------------------------------------------------------------- inputs
 
+def _rank(v, by, ascending=True):
+    """Rank within race on values rounded to 1e-6, so float noise in near-ties cannot flip the order."""
+    return v.round(6).groupby(by).rank(ascending=ascending)
+
+
 def _lags(d, col, k=K):
     g = d.groupby("horse_id", sort=False)[col]
     return np.stack([g.shift(j).to_numpy(float) for j in range(1, k + 1)], 1)
@@ -164,22 +169,22 @@ def frame(con, h=None):
     den = (x["field_n"] - 1).clip(lower=1)
     x["barrier_pct"] = ((g["barrier"].rank(method="average") - 1) / den).fillna(0.5)
     st_fill = x["st_mean"].fillna(0.5)
-    x["settle_rank"] = (st_fill.groupby(x["race_id"]).rank() - 1) / den
+    x["settle_rank"] = (_rank(st_fill, x["race_id"]) - 1) / den
     he = x["h_s_early"].where(x["h_none"] == 0)
-    x["early_rank"] = ((he.groupby(x["race_id"]).rank(ascending=False) - 1) / den).fillna(0.5)
-    x["ability_rank"] = ((x["h_wpr"].where(x["h_none"] == 0).groupby(x["race_id"]).rank(ascending=False) - 1)
+    x["early_rank"] = ((_rank(he, x["race_id"], ascending=False) - 1) / den).fillna(0.5)
+    x["ability_rank"] = ((_rank(x["h_wpr"].where(x["h_none"] == 0), x["race_id"], ascending=False) - 1)
                          / den).fillna(0.5)
     # early speed for today (first-up history when first up, else distance-matched), field rank
     es_today = x["es_fu"].where(x["first_up"] == 1, x["es_dist"])
     es_fill = es_today.fillna(es_today.groupby(x["race_id"]).transform("median")).fillna(-6.0)
     x["es_today"] = es_fill
-    x["early_rank2"] = (es_fill.groupby(x["race_id"]).rank(ascending=False) - 1) / den
+    x["early_rank2"] = (_rank(es_fill, x["race_id"], ascending=False) - 1) / den
     x["wide_x_slow"] = x["barrier_pct"] * x["early_rank2"]
     # speed map: rivals drawn inside, neighbours' early speed
-    x = x.sort_values(["race_id", "barrier"]).reset_index(drop=True)
+    x = x.sort_values(["race_id", "barrier", "run_id"], kind="mergesort").reset_index(drop=True)
     inside = np.zeros(len(x))
     inside_es = np.zeros(len(x))
-    stv, esv = x["st_mean"].to_numpy(), x["es_today"].to_numpy()
+    stv, esv = x["st_mean"].round(6).to_numpy(), x["es_today"].round(6).to_numpy()
     for _, idx in x.groupby("race_id").indices.items():
         sf = np.where(np.isnan(stv[idx]), 0.5, stv[idx])
         ef = esv[idx]
@@ -307,7 +312,7 @@ def _fit(X, y):
 def _pace_frame(x):
     x = x.assign(_lead=(x["proj_settle"] < 0.15).astype(float), _early=x["es_today"])
     g = x.groupby("race_id")
-    srt = x.sort_values("proj_settle")
+    srt = x.assign(_k=x["proj_settle"].round(6)).sort_values(["race_id", "_k", "run_id"], kind="mergesort")
     front3 = srt.groupby("race_id").head(3)
     r = pd.DataFrame({
         "n_leaders": g["_lead"].sum(), "min_settle": g["proj_settle"].min(),
@@ -346,7 +351,7 @@ def project(x, train_end, versions=("v2",)):
         x["proj_settle_old"] = _fit(x.loc[m, SETTLE_OLD], x.loc[m, "y_settle"]).predict(
             x[SETTLE_OLD].to_numpy(float)).clip(0, 1)
     den = (x["field_n"] - 1).clip(lower=1)
-    x["proj_settle_rank"] = (x.groupby("race_id")["proj_settle"].rank() - 1) / den
+    x["proj_settle_rank"] = (_rank(x["proj_settle"], x["race_id"]) - 1) / den
 
     r = _pace_frame(x)
     rm = (r["race_date"] < train_end) & (r["race_date"] >= "2019-01-01")
