@@ -10,7 +10,7 @@ Models (all per race, softmax over runners):
     gbm offset            LightGBM with a custom per-race softmax objective; the score starts from
                           the calibrated SP (fitted on train) and trees learn only the correction.
                           Features: ability + jt + field-relative versions + market context.
-Rounds for the GBM are picked on the last year of the training window, then refitted on all of it.
+Rounds for the GBM are picked on the last 20% of the training window (by date), then refitted on all of it.
 """
 import sys
 from pathlib import Path
@@ -113,8 +113,8 @@ def _gbm_train(tr, va, offset, rounds=None):
 
 
 def gbm_fit(tr):
-    """Pick rounds on the last year of train, refit on all of train. Returns (predict fn, model, rounds)."""
-    cut = tr["race_date"].max() - pd.Timedelta(days=365)
+    """Pick rounds on the last 20% of train (by date), refit on all of train. Returns (predict fn, model, rounds)."""
+    cut = tr["race_date"].quantile(0.8)
     inner, va = tr[tr.race_date <= cut], tr[tr.race_date > cut]
     inner = inner.assign(race=pd.factorize(inner["race_id"])[0])
     va = va.assign(race=pd.factorize(va["race_id"])[0])
