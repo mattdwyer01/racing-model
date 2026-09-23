@@ -351,14 +351,18 @@ def cost_coef(x, mask):
     return dict(zip(["settle", "pace", "gl"], b[:3]))
 
 
-def project(x, train_end, versions=("v2",)):
-    """Fit on rows in [2019, train_end), predict all rows. Returns (x with OUT cols, race frame, extras)."""
+def project(x, train_end, versions=("v2",), settle_fn=None):
+    """Fit on rows in [2019, train_end), predict all rows. Returns (x with OUT cols, race frame, extras).
+    settle_fn(x, train_end) -> projected settle per row, replacing the v3 settle model (e.g. projection_v4.settle)."""
     train_end = pd.Timestamp(train_end)
     x = x.copy()
     tr = (x["race_date"] < train_end) & (x["race_date"] >= "2019-01-01")
     extras = {}
     m = tr & x["y_settle"].notna()
-    x["proj_settle"] = _fit(x.loc[m, SETTLE_X], x.loc[m, "y_settle"]).predict(x[SETTLE_X].to_numpy(float)).clip(0, 1)
+    if settle_fn is None:
+        x["proj_settle"] = _fit(x.loc[m, SETTLE_X], x.loc[m, "y_settle"]).predict(x[SETTLE_X].to_numpy(float)).clip(0, 1)
+    else:
+        x["proj_settle"] = np.asarray(settle_fn(x, train_end), float).clip(0, 1)
     if "old" in versions:
         x["proj_settle_old"] = _fit(x.loc[m, SETTLE_OLD], x.loc[m, "y_settle"]).predict(
             x[SETTLE_OLD].to_numpy(float)).clip(0, 1)
