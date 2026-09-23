@@ -49,7 +49,7 @@ def build(con, train_end):
     h = figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
     extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"]
-    px, _ = projection.project(projection.frame(con, h), train_end)
+    px, _, _ = projection.project(projection.frame(con, h), train_end)
     e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left") \
         .merge(px[["run_id"] + PROJ], on="run_id", how="left")
     e[JT] = e[JT].fillna(0.0)
