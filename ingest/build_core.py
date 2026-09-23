@@ -128,13 +128,33 @@ from base b where is_trial_or_jumpout;
 """
 
 
+LIVE = ROOT / "data/raw/live/toprate_runners.csv"   # copy of the TopRate dashboard's runners file
+
+LIVE_SQL = f"""
+create or replace table live_runners as
+select * from read_csv('{LIVE}', sample_size = -1);
+
+-- race number and start time for every race the dashboard has seen (Apr 2026 onward)
+create or replace table race_times as
+select race_id, any_value(race) race_no, min(start_time)::timestamptz start_utc
+from live_runners where race_id is not null group by race_id;
+
+-- near-jump fixed price for backtesting (last value the dashboard captured before the result)
+create or replace table fixed_prices_final as
+select run_id, race_id, fixed_win_price, open_price, starting_price_sp, scratched
+from live_runners where run_id is not null;
+"""
+
+
 def build(db=DB):
     con = duckdb.connect(str(db))
     con.execute(SQL)
+    if LIVE.exists():
+        con.execute(LIVE_SQL)
     return con
 
 
 if __name__ == "__main__":
     con = build()
-    for t in ("tr_raw", "tracks", "races", "runs"):
+    for t in [r[0] for r in con.sql("show tables").fetchall()]:
         print(t, con.sql(f"select count(*) from {t}").fetchone()[0])

@@ -1,0 +1,28 @@
+name: TAB price archive
+
+# Copies the TAB fixed-odds log written on the Vultr box into the data store
+# (tab_prices_YYYY-MM.csv.gz on the `data` release). Needs a self-hosted runner
+# for THIS repo on the Vultr box with the label `vultr-au`, and the repo
+# variable VULTR_RUNNER set to `true` (until then the job is skipped).
+
+on:
+  schedule:
+    - cron: "30 14 * * *"     # 00:30 AEST / 01:30 AEDT, after racing
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    if: vars.VULTR_RUNNER == 'true'
+    runs-on: [self-hosted, vultr-au]
+    timeout-minutes: 20
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet requests
+      - run: python3 pipeline/archive_tab_prices.py --months 2
+      - if: always()
+        run: rm -rf work

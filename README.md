@@ -6,7 +6,8 @@ Horse rating and win-probability model for VIC, SA and QLD thoroughbred racing.
 | Source | Role | Coverage |
 |---|---|---|
 | TopRate yearly results (`data/raw/toprate/`) | Backbone: results, sectional ratings, WPR, positions, comments | 2017 to now; near-complete for all AU from 2022 |
-| Triple S GPS reports (racing.com, RQ) | Distance travelled, distance from rail, speed and stride per 200m | Captured from now on (parser: `ingest/tsd_gps_pdf.py`) |
+| RQ GPS XML (`ingest/rq_sectionals.py`) | QLD: per-200m distance run, speed, stride, distance to rail | Oct 2022 onward |
+| racing.com GraphQL (`ingest/racingcom_sectionals.py`) | VIC/SA: distance run, average rail distance, 200m splits, early/mid/late speed | Triple S VIC metro from Aug 2021 |
 | TAB fixed odds | Bet-time prices and start times | Captured from now on |
 
 ## Build
@@ -15,11 +16,22 @@ pip install -r requirements.txt
 python ingest/build_core.py        # raw TopRate files -> data/db/racing.duckdb
 ```
 
+## Automation (GitHub Actions)
+- `gps_daily.yml`: every morning, pulls the last week of RQ and racing.com GPS data and merges it into the data store.
+- `gps_backfill.yml`: manual, pulls full history (RQ from Oct 2022, racing.com from a chosen date).
+- `tab_price_archive.yml`: nightly, ships the Vultr box's TAB price log to the store (needs the Vultr runner).
+- Data store: assets on the `data` release. `python pipeline/store.py list` shows what's there.
+
+## Tools
+- `tools/for_toprate_repo/`: copy both files into the TopRate repo. The poller then writes every TAB fixed-odds read to `~/racing-data/tab_prices/` on the Vultr box, permanently.
+- `tools/extract_prices_from_git.py`: rebuilds price history from the git history of `toprate_runners.csv` (usage in the file header).
+
 ## Tables (`data/db/racing.duckdb`)
 - `tr_raw`: every TopRate row, untouched
 - `tracks`: track -> venue, state, location class (M/P/C), surface, in_scope (from `ingest/tracks.csv`)
 - `races`: one row per race or trial; parsed class, rail offset, surface, `full_coverage` flag
 - `runs`: one row per runner
+- `live_runners`, `race_times`, `fixed_prices_final`: from the dashboard's `toprate_runners.csv` (put a copy in `data/raw/live/`); race number, start time and near-jump fixed price from Apr 2026
 
 Naming rule in `runs`: columns without a prefix are known before the race. Columns starting `res_` are
 results or in-race measurements and must never be used as inputs for the same race.

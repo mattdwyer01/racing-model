@@ -1,0 +1,105 @@
+name: GPS sectionals (backfill)
+
+# One-off history pull. Run from the Actions tab -> "Run workflow".
+#   RQ:         every meeting ZIP on the RQ page (Oct 2022 on), ~25 min.
+#   racing.com: VIC/SA meetings from `from` to `to`, split into one job per year
+#               (each ~2 h, under GitHub's 6 h job limit), two at a time.
+# Safe to re-run: results are merged into the store, duplicates removed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "rq, racingcom or both"
+        default: both
+      from:
+        description: "racing.com start date"
+        default: "2021-08-01"
+      to:
+        description: "racing.com end date (blank = today)"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.p.outputs.years }}
+    steps:
+      - id: p
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import datetime, json
+          f = "${{ inputs.from }}"; t = "${{ inputs.to }}" or datetime.date.today().isoformat()
+          chunks = []
+          for y in range(int(f[:4]), int(t[:4]) + 1):
+              a = max(f, f"{y}-01-01"); b = min(t, f"{y}-12-31")
+              chunks.append({"from": a, "to": b})
+          print("years=" + json.dumps(chunks))
+          EOF
+
+  rq:
+    if: inputs.source == 'rq' || inputs.source == 'both'
+    runs-on: ${{ vars.SCRAPER_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: |
+          python ingest/rq_sectionals.py download --zip-dir work/rq_zip
+          python ingest/rq_sectionals.py parse --zip-dir work/rq_zip --out-dir work/new/rq
+      - uses: actions/upload-artifact@v4
+        with: { name: gps-rq, path: work/new/rq, retention-days: 7 }
+
+  racingcom:
+    needs: plan
+    if: inputs.source == 'racingcom' || inputs.source == 'both'
+    runs-on: ${{ vars.SCRAPER_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 2           # be polite to racing.com
+      matrix:
+        chunk: ${{ fromJSON(needs.plan.outputs.years) }}
+    env:
+      RACINGCOM_API_KEY: ${{ secrets.RACINGCOM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: |
+          python ingest/racingcom_sectionals.py fetch --from ${{ matrix.chunk.from }} --to ${{ matrix.chunk.to }} --raw-dir work/rc_raw
+          python ingest/racingcom_sectionals.py parse --raw-dir work/rc_raw --out-dir work/new/rc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gps-rc-${{ matrix.chunk.from }}
+          path: |
+            work/new/rc
+            work/rc_raw/_meet_codes.csv
+          retention-days: 7
+
+  store:
+    needs: [rq, racingcom]
+    if: always() && (needs.rq.result == 'success' || needs.racingcom.result == 'success')
+    runs-on: ubuntu-latest
+    concurrency: { group: gps-data, cancel-in-progress: false }
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with: { pattern: gps-*, path: work/new }
+      - name: Merge into data store
+        run: |
+          # each artifact lands in work/new/<artifact>/ with sub-folders; bring its parquet files up to that level
+          for d in work/new/gps-*; do find "$d" -mindepth 2 -name '*.parquet' -exec mv {} "$d"/ \; ; done
+          ls -R work/new | head -50
+          bash pipeline/update_gps.sh

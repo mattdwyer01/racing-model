@@ -1,0 +1,57 @@
+name: GPS sectionals (daily)
+
+# Pulls new Triple S GPS data every morning and merges it into the data store
+# (assets on the `data` release): QLD from Racing Queensland's meeting ZIPs,
+# VIC/SA from racing.com's API. Re-reads the last week each day because both
+# sites publish a few days after the race; duplicates are merged away.
+#
+# Runs on GitHub's own machines unless the repo variable SCRAPER_RUNNER is set
+# (e.g. to `vultr-au`) - switch it if either site blocks GitHub's IP ranges.
+
+on:
+  schedule:
+    - cron: "0 20 * * *"      # 06:00 AEST / 07:00 AEDT
+  workflow_dispatch:
+
+permissions:
+  contents: write              # upload to the data release
+
+concurrency:
+  group: gps-data              # never two jobs writing the store at once
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ${{ vars.SCRAPER_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RACINGCOM_API_KEY: ${{ secrets.RACINGCOM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Racing Queensland (last 10 days)
+        continue-on-error: true
+        run: |
+          python ingest/rq_sectionals.py download --since "$(date -u -d '10 days ago' +%F)" --zip-dir work/rq_zip
+          python ingest/rq_sectionals.py parse --zip-dir work/rq_zip --out-dir work/new
+
+      - name: racing.com VIC/SA (last 7 days)
+        continue-on-error: true
+        run: |
+          python ingest/racingcom_sectionals.py fetch --recent-days 7 --raw-dir work/rc_raw
+          python ingest/racingcom_sectionals.py parse --raw-dir work/rc_raw --out-dir work/new
+
+      - name: Merge into data store
+        run: bash pipeline/update_gps.sh
+
+      - name: Clean up
+        if: always()
+        run: rm -rf work store
