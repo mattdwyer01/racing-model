@@ -177,7 +177,9 @@ class CalendarIndex:
     def __init__(self, cal: Client | None, states: list[str]):
         from datetime import date
         self.cal, self.states, self.months, self.idx, self.days = cal, states, set(), {}, {}
-        self.this_month = date.today().strftime("%Y-%m")
+        from datetime import timedelta
+        # re-download recent months' calendars (meetings get added or moved); older ones stay cached
+        self.this_month = (date.today() - timedelta(days=40)).strftime("%Y-%m")
 
     def _load_month(self, date_: str) -> None:
         ym = date_[:7]
@@ -284,7 +286,9 @@ def resolve_codes(ms: pd.DataFrame, known: dict, cal: CalendarIndex, c: Client |
             tried_before = key in known
             try:
                 code = cal.lookup(m.date, [m.track, m.venue])
-                if not code and not tried_before and c is not None:
+                # slug API only for backfills: it costs ~2 slow requests per slot, and in the
+                # --recent-days scan most slots are tracks that didn't race (calendar is enough)
+                if not code and not tried_before and c is not None and not quiet_missing:
                     code = meet_code(c, [m.track, m.venue], m.date)
             except Exception as e:
                 print(f"  {m.date} {m.track}: meet code lookup failed: {e}")
@@ -326,7 +330,9 @@ def fetch(ms: pd.DataFrame, delay: float, quiet_missing: bool = False) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     codes_file = RAW_DIR / "_meet_codes.csv"
     known = _load_codes(codes_file)
-    print(f"{len(ms)} meeting slots to check")
+    n_days = ms["date"].nunique()
+    every = 1 if n_days <= 31 else 50
+    print(f"{len(ms)} meeting slots to check over {n_days} days", flush=True)
     for i, (date_, day) in enumerate(ms.groupby("date", sort=True), 1):
         resolve_codes(day, known, cal, c, quiet_missing)
         _write_codes(known, codes_file)
@@ -348,8 +354,9 @@ def fetch(ms: pd.DataFrame, delay: float, quiet_missing: bool = False) -> None:
                         _save(f, c.q(RACE_FORM % (code, n)))
                     except Exception as e:
                         print(f"  {code} R{n}: {e}")
-        if i % 50 == 0:
-            print(f"  {i} race days done ({date_})")
+        if i % every == 0 or i == n_days:
+            n_codes = sum(1 for m in day.itertuples() if known.get((m.date, m.track)))
+            print(f"  {i}/{n_days} days done ({date_}: {n_codes} meetings)", flush=True)
 
 
 def misses(ms: pd.DataFrame) -> None:
