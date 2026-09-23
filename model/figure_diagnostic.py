@@ -24,7 +24,7 @@ from model import ability, figure  # noqa: E402
 TEST_FROM = "2025-01-01"
 
 EXTRA_SQL = """
-select r.run_id, ra.location_class, ra.going_num, r.res_wpr_status wpr_status, r.res_margin_l margin, r.age,
+select r.run_id, ra.location_class, r.res_wpr_status wpr_status, r.res_margin_l margin,
   ra.class_type
 from runs r join races ra using (race_id) where not r.is_trial_or_jumpout
 """
