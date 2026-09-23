@@ -23,6 +23,8 @@ Variants (added inputs on top of the baseline):
        figure-dependent ability input (form, trend, distance / going / surface fit, prep aptitude)
   gpsx GPS section history (QLD): relative speed early / late, top speed, trouble, stride, places gained
   comments  stewards' and video comment history: trouble / health flags and the scored video verdict tag
+  prod      production inputs: baseline + comments + past ground-loss credit (h_gl, h_gl_miss, h_rail)
+  posmap    prod + expected position value and width value (position_map.py)
 """
 import argparse
 import sys
@@ -34,7 +36,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import ability, clogit, extra_history, figure, rating  # noqa: E402
+from model import ability, clogit, extra_history, figure, position_map, rating  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import race_ll  # noqa: E402
 
@@ -42,7 +44,9 @@ FOLDS = [2023, 2024, 2025, 2026]
 NOMKT = [c for c in om.GBM_FEATS if c not in ("log_p_sp", "mkt_rank")]
 LOGIT_X = om.BASE + om.JT + om.PROJ
 EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": [],
-         "gpsx": extra_history.GX_FEATS, "comments": extra_history.CM_FEATS}
+         "gpsx": extra_history.GX_FEATS, "comments": extra_history.CM_FEATS,
+         "prod": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"],
+         "posmap": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] + position_map.FEATS}
 
 
 def feats_for(v, cols):
@@ -198,6 +202,12 @@ def main():
           diff_table(d, ps, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
           "## Per-state blend minus per-state calibrated SP, by 6-month period", "",
           half_table(d, ps[:sum(len(names[v]) for v in variants)], rng).to_markdown(index=False, floatfmt=".4f")]
+    if "posmap" in variants and "prod" in variants:
+        pp = [(f"posmap blend {n} - prod blend {n}", f"posmap: blend {n}", f"prod: blend {n}") for n in ["logit", "gbm"]] + \
+             [(f"posmap model {n} - prod model {n}", f"posmap: model {n}", f"prod: model {n}") for n in ["logit", "gbm"]]
+        L += ["", "## Position map vs production inputs (paired by race)", "",
+              diff_table(d, pp, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
+              half_table(d, pp[:2], rng).to_markdown(index=False, floatfmt=".4f")]
     if len(variants) > 1:
         vs_base = [(f"{v} blend {n} - baseline blend {n}", f"{v}: blend {n}", f"baseline: blend {n}")
                    for v in variants[1:] for n in ["logit", "gbm"]] + \

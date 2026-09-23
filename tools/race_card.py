@@ -29,7 +29,7 @@ from runs r join races ra using (race_id) left join race_times t on t.race_id = 
 where r.race_date = date '{d}' and not r.is_trial_or_jumpout
 """
 SHOW = ["ability", "form shape", "distance / going", "prep", "race-day projection", "track bias",
-        "jockey / trainer", "comments", "age / sex / weight"]
+        "jockey / trainer", "comments", "ground loss (past runs)", "position value", "age / sex / weight"]
 
 
 def prep(rows):

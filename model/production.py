@@ -1,5 +1,5 @@
 """Production model: conditional logit on figure + ability + jockey/trainer + race-day projection + run comments,
-blended with the market, and expressed in WPR points so every horse's rating can be read as
+plus past ground-loss credit, blended with the market, and expressed in WPR points so every horse's rating can be read as
 ability + bonuses / penalties.
 
     python model/production.py --train-end 2026-01-01      # train, save data/models/logit_<date>.pkl,
@@ -24,10 +24,11 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import clogit, extra_history, figure  # noqa: E402
+from model import clogit, extra_history, figure, position_map  # noqa: E402
 from model import offset_model as om  # noqa: E402
 
-COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS))
+GL = ["h_gl", "h_gl_miss", "h_rail"]     # past extra ground / width credit (QLD GPS); kept by decision, not for blend gain
+COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS + GL))
 WPR_LEVEL = ["h_wpr", "dm", "fig_last", "best3", "best10", "mean3"]
 GROUPS = {
     "ability": WPR_LEVEL + ["h_class", "log_n", "h_none", "h_last_wpr"],
@@ -42,6 +43,8 @@ GROUPS = {
     "track bias": ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "bias_adj"],
     "jockey / trainer": ["j_ae", "j_sr", "j90_ae", "t_ae", "t_sr", "c_ae", "tfu_ae", "h_ae", "j_change", "j_upgrade"],
     "comments": extra_history.CM_FEATS,
+    "ground loss (past runs)": GL,
+    "position value": position_map.FEATS,
     "age / sex / weight": ["age2", "age3", "age7", "female", "wt_rel_today"],
 }
 MODELS = ROOT / "data/models"
