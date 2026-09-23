@@ -7,12 +7,14 @@ position and speed. Per race: timing source (TripleS, Equitime, ...) and complet
 Runs on your PC (the API is not reachable from cloud workspaces). Needs the site's public
 web API key in an environment variable, kept out of the repo:
 
-    set RACINGCOM_API_KEY=da2-...                      (Windows)
+    set RACINGCOM_API_KEY=da2-...        form API key      (Windows)
+    set RACINGCOM_CAL_API_KEY=da2-...    calendar API key (graphql.api.racing.com)
     python ingest/racingcom_sectionals.py fetch --from 2021-08-01 --states VIC,SA
     python ingest/racingcom_sectionals.py parse
 
-`fetch` reads VIC/SA meeting dates and venues from data/db/racing.duckdb, looks up each
-meeting's racing.com code, then saves every race's raw JSON to data/raw/racingcom/
+`fetch` reads VIC/SA meeting dates and venues from data/db/racing.duckdb, finds each
+meeting's racing.com code from racing.com's monthly calendar (sponsor names stripped,
+Melbourne-time dates; falls back to the venue-slug lookup), then saves every race's raw JSON to data/raw/racingcom/
 (already-saved races are skipped, so it can be stopped and restarted any time).
 `parse` turns the saved JSON into data/interim/rc_gps_{runs,sections}.parquet.
 """
@@ -56,7 +58,36 @@ RACE_FORM = """query{ f: getRaceForm(meetCode: "%s", raceNumber:%d) {
     SplitTimes: splitTimes { Distance: distance Position: position Time: time AvgSpeed: avgSpeed } }
   RaceTime: raceTime Source: timingSource IsComplete: isTimingComplete IsCompleteData: isCompleteData } }"""
 
-# Venue slug + date -> racing.com meeting code(s), as the racing.com page itself asks.
+# Month calendar -> every meeting's code, name, type and start time (racing.com's calendar page).
+# Different API host and key from the form API.
+CAL_ENDPOINT = "https://graphql.api.racing.com/"
+CAL_QUERY = """query GetCalendarEvents { getCalendarItems(
+  meetTypes: ["Metro","Provincial","Country","Picnic"], eventTypes: ["Racing"],
+  states: [%s], year: %d, month: %d, hideHiddenEvents: true) {
+  race_meet_id name location_name race_meet_type event_start_time state } }"""
+
+# racing.com name -> TopRate track name, where stripping sponsors isn't enough
+RC_ALIASES = {
+    "the valley": "moonee valley",
+    "ladbrokes park hillside": "sandown hillside",
+    "ladbrokes park lakeside": "sandown lakeside",
+    "ladbrokes park": "sandown hillside",
+}
+SPONSOR_RE = re.compile(r"^(sportsbet|bet365|apiam|ladbrokes|tab|neds|pointsbet|picklebet|southside|"
+                        r"thoroughbred club|aquis)[\s-]+(park[\s-]+)?", re.I)   # 'bet365 Park Wodonga' -> 'wodonga'
+
+
+def norm_track(name: str) -> str:
+    """'Sportsbet-Pakenham Synthetic' -> 'pakenham synthetic', 'Sandown-Hillside' -> 'sandown hillside'."""
+    n = (name or "").strip().lower()
+    if n in RC_ALIASES:
+        return RC_ALIASES[n]
+    n = SPONSOR_RE.sub("", n)
+    n = re.sub(r"[^a-z0-9]+", " ", n).strip()
+    return RC_ALIASES.get(n, n)
+
+
+# Venue slug + date -> racing.com meeting code(s), as the racing.com page itself asks (fallback).
 MEET_CODE_QUERY = """query GetMeetCode_CD($venueName: String $date: String) {
   GetMeetingByVenue(venueName: $venueName date: $date) { id isJumpOut isTrial } }"""
 
@@ -64,13 +95,16 @@ MEET_CODE_QUERY = """query GetMeetCode_CD($venueName: String $date: String) {
 # ---------------------------------------------------------------- fetch
 
 class Client:
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 1.0, endpoint: str = ENDPOINT, key_var: str = "RACINGCOM_API_KEY"):
         import requests
-        key = os.environ.get("RACINGCOM_API_KEY")
+        key = os.environ.get(key_var)
         if not key:
-            sys.exit("Set RACINGCOM_API_KEY first (the X-Api-Key value from the browser request).")
+            sys.exit(f"Set {key_var} first (the x-api-key value from the browser request).")
         self.s = requests.Session()
         self.s.headers.update({**HEADERS, "X-Api-Key": key})
+        if endpoint != ENDPOINT:
+            self.s.headers.update({"Origin": "https://www.racing.com", "Referer": "https://www.racing.com/"})
+        self.endpoint = endpoint
         self.delay = delay
 
     def q(self, query: str, variables: dict | None = None) -> dict:
@@ -79,7 +113,7 @@ class Client:
             params["variables"] = json.dumps(variables)
         for attempt in range(4):
             try:
-                r = self.s.get(ENDPOINT, params=params, timeout=30)
+                r = self.s.get(self.endpoint, params=params, timeout=30)
                 if r.status_code == 429:
                     time.sleep(30 * (attempt + 1)); continue
                 r.raise_for_status()
@@ -106,6 +140,49 @@ def meet_code(c: Client, names: list[str], date: str) -> str | None:
         if races:
             return str(races[0]["id"])
     return None
+
+
+def calendar_month(cal: Client, year: int, month: int, states: list[str], refresh: bool = False) -> list[dict]:
+    """All race meetings (not trials/jump-outs) in a month, cached in RAW_DIR. Each item gets
+    `local_date` (Melbourne time; night meetings otherwise fall on the previous UTC day)."""
+    f = RAW_DIR / f"_calendar_{year}-{month:02d}.json.gz"
+    if f.exists() and not refresh:
+        d = _load(f)
+    else:
+        d = cal.q(CAL_QUERY % (",".join(f'"{x}"' for x in states), year, month))
+        if (d.get("data") or {}).get("getCalendarItems") is not None:
+            _save(f, d)
+    items = ((d.get("data") or {}).get("getCalendarItems")) or []
+    out = []
+    for it in items:
+        if it.get("race_meet_type") in ("Trial", "JumpOut") or not it.get("event_start_time"):
+            continue
+        t = pd.Timestamp(it["event_start_time"]).tz_convert("Australia/Melbourne")
+        out.append(dict(it, local_date=t.date().isoformat(),
+                        keys={norm_track(it.get("name")), norm_track(it.get("location_name"))}))
+    return out
+
+
+class CalendarIndex:
+    """(date, normalised track) -> meet code, built month by month on demand."""
+    def __init__(self, cal: Client, states: list[str]):
+        from datetime import date
+        self.cal, self.states, self.months, self.idx = cal, states, set(), {}
+        self.this_month = date.today().strftime("%Y-%m")
+
+    def lookup(self, date_: str, names: list[str]) -> str | None:
+        ym = date_[:7]
+        if ym not in self.months:
+            y, m = int(ym[:4]), int(ym[5:])
+            for it in calendar_month(self.cal, y, m, self.states, refresh=(ym >= self.this_month)):
+                for k in it["keys"]:
+                    self.idx.setdefault((it["local_date"], k), str(it["race_meet_id"]))
+            self.months.add(ym)
+        for n in names:
+            code = self.idx.get((date_, norm_track(n)))
+            if code:
+                return code
+        return None
 
 
 MEETINGS_CSV = ROOT / "ingest/meetings_vic_sa.csv"   # committed VIC/SA/QLD meeting list for backfills (from TopRate)
@@ -140,6 +217,8 @@ def recent_meetings(days: int, states: list[str]) -> pd.DataFrame:
 
 def fetch(ms: pd.DataFrame, delay: float, quiet_missing: bool = False) -> None:
     c = Client(delay)
+    cal = CalendarIndex(Client(delay, CAL_ENDPOINT, "RACINGCOM_CAL_API_KEY"),
+                        sorted(set(ms["state"]) if "state" in ms else ["VIC", "SA"]))
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     codes_file = RAW_DIR / "_meet_codes.csv"
     codes = pd.read_csv(codes_file, dtype=str) if codes_file.exists() else \
@@ -149,9 +228,13 @@ def fetch(ms: pd.DataFrame, delay: float, quiet_missing: bool = False) -> None:
     print(f"{len(ms)} meeting slots to check")
     for i, m in enumerate(ms.itertuples(), 1):
         key = (m.date, m.track)
-        if key not in known:
+        if not known.get(key):              # unseen, or a blank from an earlier failed lookup
+            tried_before = key in known
             try:
-                known[key] = meet_code(c, [m.track, m.venue], m.date) or ""
+                code = cal.lookup(m.date, [m.track, m.venue])
+                if not code and not tried_before:
+                    code = meet_code(c, [m.track, m.venue], m.date)
+                known[key] = code or ""
             except Exception as e:
                 print(f"  {m.date} {m.track}: meet code lookup failed: {e}"); continue
             if not known[key] and not quiet_missing:
