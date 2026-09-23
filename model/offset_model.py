@@ -47,6 +47,7 @@ MAX_ROUNDS, EARLY = 1500, 100
 PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
 SETTLE_V4 = False  # with PX_KEEP: also keep the v4 settle projection (projection_v4.settle) as proj_settle_v4
 EXTRA_PROJ = False  # also add PROJ_V4 (projection outputs with v4 settle) and GPS_PACE (projected GPS race pace)
+KEEP_SIM = False    # with EXTRA_PROJ: keep the race simulation's inputs in LAST_PX (tools/race_card.py speed map)
 PROJ_V4 = [c + "_v4" for c in projection.OUT]
 GPS_PACE = ["proj_gps_pace", "proj_gps_pace_x"]
 LAST_PX = {}
@@ -109,6 +110,10 @@ def _extra_proj(con, fr, train_end):
     m = (r4["race_date"] < pd.Timestamp(train_end)) & r4["gps_pace"].notna()
     r4["proj_gps_pace"] = projection._fit(r4.loc[m, projection.PACE_X], r4.loc[m, "gps_pace"]).predict(
         r4[projection.PACE_X].to_numpy(float))
+    if KEEP_SIM:                                   # for race cards: the sim's inputs (v4 settle) and race frame
+        from model import race_sim
+        LAST_PX["sim_px"] = x4[race_sim.PX].assign(sim_settle=x4["proj_settle"])
+        LAST_PX["sim_rr"] = r4.copy()
     out = x4[["run_id", "race_id"] + projection.OUT].rename(columns={c: c + "_v4" for c in projection.OUT})
     out["proj_gps_pace"] = out["race_id"].map(r4["proj_gps_pace"])
     out["proj_gps_pace_x"] = out["proj_gps_pace"] * (1 - out["proj_settle_v4"])

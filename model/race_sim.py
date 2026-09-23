@@ -136,7 +136,8 @@ class SimParts:
 
 
 def draws(df, parts, seed=0):
-    """Simulated position value per runner and draw, (n_rows, D) float32, plus P(lead) per runner.
+    """Simulated position value per runner and draw, (n_rows, D) float32, P(lead) per runner and
+    P(slow / even / fast pace) per runner's race (n_rows, N_PACE).
     df sorted by race; needs sim_settle, sim_pace0 (projected GPS pace), es_today, sigma inputs and context."""
     rng = np.random.default_rng(seed)
     V = parts.values(df).astype(np.float32)
@@ -146,6 +147,7 @@ def draws(df, parts, seed=0):
     shape0 = df["sim_pace0"].fillna(0).to_numpy(float)
     out = np.zeros((len(df), D), np.float32)
     lead = np.zeros(len(df))
+    pace_p = np.zeros((len(df), N_PACE))
     race = df["race_id"].to_numpy()
     starts = np.r_[0, np.flatnonzero(race[1:] != race[:-1]) + 1, len(df)]
     sizes = np.diff(starts)
@@ -171,7 +173,9 @@ def draws(df, parts, seed=0):
                                    cell[..., None], -1)[..., 0]
             out[ii.ravel()] = v.transpose(0, 2, 1).reshape(R * n, D)
             lead[ii.ravel()] = (rank == 0).mean(1).ravel()
-    return out, lead
+            pp = np.stack([(pace == b).mean(1) for b in range(N_PACE)], 1)          # (R, N_PACE)
+            pace_p[ii.ravel()] = np.repeat(pp, n, axis=0)
+    return out, lead, pace_p
 
 
 def sim_probs(u, Vd, k, unit, race):
@@ -218,7 +222,7 @@ def run_fold(con, y):
         u = production.utility(score, b_base)
         p_base = om._softmax(u, race)
         score = score.assign(sim_pace0=score["race_id"].map(parts.pace_proj(rr)).to_numpy())
-        Vd, lead = draws(score, parts)
+        Vd, lead, _ = draws(score, parts)
         return p_prod, p_base, u, unit, Vd, lead
 
     parts_bl = SimParts().fit(px, rr, cut)
