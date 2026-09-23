@@ -2,6 +2,7 @@
 
     python model/offset_model.py            # walk-forward on SP (2023-2026) -> reports/offset_validation.md
     python model/offset_model.py --fixed    # + fixed-price backtest (Apr 2026 on) -> reports/offset_fixed_backtest.md
+    python model/offset_model.py --qld      # QLD test races: all-state vs QLD-only models -> reports/offset_qld.md
 
 Models (all per race, softmax over runners):
     SP (calibrated)       beta * log p_sp
@@ -234,7 +235,52 @@ def fixed_backtest():
     print("\n".join(L))
 
 
+def qld():
+    """QLD test races: models fitted on all states vs fitted on QLD only, all against SP."""
+    con = duckdb.connect(str(figure.DB), read_only=True)
+    rows, per = [], {}
+    for y in [2023, 2024, 2025, 2026]:
+        e = add_context(build(con, f"{y}-01-01"))
+        tr = e[e.race_date < f"{y}-01-01"].copy()
+        te = e[(e.race_date.dt.year == y) & (e.state == "QLD")].copy()
+        trq = tr[tr.state == "QLD"].copy()
+        for df in (tr, te, trq):
+            df["race"] = pd.factorize(df["race_id"])[0]
+        cols = ["log_p_sp"] + ability.ALL + JT + PROJ
+        fns = {"SP (calibrated, all-state fit)": logit_fit(tr, ["log_p_sp"]),
+               "SP (calibrated, QLD fit)": logit_fit(trq, ["log_p_sp"]),
+               "logit, all-state fit": logit_fit(tr, cols),
+               "logit, QLD fit": logit_fit(trq, cols),
+               "gbm offset, all-state fit": gbm_fit(tr)[0],
+               "gbm offset, QLD fit": gbm_fit(trq)[0]}
+        res = {"fold": y, "QLD races": te.race_id.nunique()}
+        for k, f in fns.items():
+            ll = race_ll(f(te), te)
+            res[k] = ll.mean()
+            per.setdefault(k, []).append(ll)
+        rows.append(res)
+        print(y, {k: round(float(v), 4) for k, v in res.items() if k != "fold"}, flush=True)
+    tab = pd.DataFrame(rows).set_index("fold")
+    pooled = {k: np.concatenate(v) for k, v in per.items()}
+    tab.loc["pooled"] = [tab["QLD races"].sum()] + [pooled[k].mean() for k in per]
+    base = pooled["SP (calibrated, all-state fit)"]
+    L = ["# QLD: all-state vs QLD-only models", "",
+         "- Test: QLD races in year Y (2023 to 2026 YTD); fitted on 2022 to Y-1 (all states or QLD only)",
+         "- Features: SP + ability + jockey/trainer + race-day projection (incl. track bias, track x distance"
+         " barrier, speed map)", "",
+         "## Log loss", "", tab.T.to_markdown(floatfmt=".4f"), "",
+         "## vs SP (calibrated, all-state fit), pooled", "", "| model | diff | se |", "|---|---|---|"]
+    L += [f"| {k} | {(pooled[k] - base).mean():+.4f} | {(pooled[k] - base).std() / np.sqrt(len(base)):.4f} |"
+          for k in per]
+    out = ROOT / "reports/offset_qld.md"
+    out.write_text("\n".join(L) + "\n")
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
-    walk_forward()
-    if "--fixed" in sys.argv:
-        fixed_backtest()
+    if "--qld" in sys.argv:
+        qld()
+    else:
+        walk_forward()
+        if "--fixed" in sys.argv:
+            fixed_backtest()
