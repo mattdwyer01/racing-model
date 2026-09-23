@@ -46,6 +46,9 @@ GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
 MAX_ROUNDS, EARLY = 1500, 100
 PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
 SETTLE_V4 = False  # with PX_KEEP: also keep the v4 settle projection (projection_v4.settle) as proj_settle_v4
+EXTRA_PROJ = False  # also add PROJ_V4 (projection outputs with v4 settle) and GPS_PACE (projected GPS race pace)
+PROJ_V4 = [c + "_v4" for c in projection.OUT]
+GPS_PACE = ["proj_gps_pace", "proj_gps_pace_x"]
 LAST_PX = {}
 
 
@@ -76,6 +79,8 @@ def build_features(con, train_end):
             keep["proj_settle_v4"] = keep["run_id"].map(v4)
             del f4
         LAST_PX["px"] = keep
+    if EXTRA_PROJ:
+        px4 = _extra_proj(con, fr, train_end)
     del fr
     xh = extra_history.features(con, d, train_end)   # GPS sections + run comments history (variants only)
     pm = position_map.features(con, px, train_end)   # expected position / width value (variants only)
@@ -85,10 +90,29 @@ def build_features(con, train_end):
         .merge(px[["run_id"] + PROJ], on="run_id", how="left") \
         .merge(xh, on="run_id", how="left") \
         .merge(pm, on="run_id", how="left")
+    if EXTRA_PROJ:
+        e = e.merge(px4, on="run_id", how="left")
     # y_wpr is today's result: a fitting target for the rating model only, never an input
     e[JT] = e[JT].fillna(0.0)
     # fixed row order, so adding columns or merges never changes what the GBM's row sampling sees
     return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
+
+
+def _extra_proj(con, fr, train_end):
+    """Projection outputs with the v4 settle model (suffix _v4) and projected GPS race pace (projection_gps.py
+    target, v3 pace inputs built on v4 settle), both fitted on races before train_end."""
+    from model import projection_gps, projection_v4
+    f4 = projection_v4.add_features(con, fr)
+    x4, r4, _ = projection.project(f4, train_end, settle_fn=projection_v4.settle)
+    del f4
+    r4 = r4.join(projection_gps.gps_pace(con).rename("gps_pace"))
+    m = (r4["race_date"] < pd.Timestamp(train_end)) & r4["gps_pace"].notna()
+    r4["proj_gps_pace"] = projection._fit(r4.loc[m, projection.PACE_X], r4.loc[m, "gps_pace"]).predict(
+        r4[projection.PACE_X].to_numpy(float))
+    out = x4[["run_id", "race_id"] + projection.OUT].rename(columns={c: c + "_v4" for c in projection.OUT})
+    out["proj_gps_pace"] = out["race_id"].map(r4["proj_gps_pace"])
+    out["proj_gps_pace_x"] = out["proj_gps_pace"] * (1 - out["proj_settle_v4"])
+    return out.drop(columns="race_id")
 
 
 def add_context(e, mkt="log_p_sp"):

@@ -48,6 +48,10 @@ EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": [],
          "prod": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"],
          "posmap": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] + position_map.FEATS,
          "prodmu": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"]}
+# production + model-alone improvers, all together and leave-one-out (logit only)
+P2 = {"v4", "gps", "fig2", "mu"}
+PARTS = {"prod2": P2, **{f"prod2-{k}": P2 - {k} for k in sorted(P2)}}
+EXTRA.update({v: extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] for v in PARTS})
 MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
 
 
@@ -64,9 +68,15 @@ def mu_logit_fit(d, cols):
 
 
 def feats_for(v, cols):
-    """Inputs for variant v: baseline inputs + EXTRA[v]; fig2 swaps every figure-dependent input for its v2."""
+    """Inputs for variant v: baseline inputs + EXTRA[v]; fig2 swaps every figure-dependent input for its v2.
+    prod2 variants: v4 = projection outputs from the v4 settle model; gps = + projected GPS pace; fig2 as above."""
     cols = cols + EXTRA[v]
-    if v == "fig2":
+    parts = PARTS.get(v, set())
+    if "v4" in parts:
+        cols = [c + "_v4" if c in om.PROJ else c for c in cols]
+    if "gps" in parts:
+        cols = cols + om.GPS_PACE
+    if v == "fig2" or "fig2" in parts:
         dep = set(ability.FIG_DEPENDENT) | {f"{c}_{k}" for c in ability.FIG_DEPENDENT for k in ("rel", "gap")}
         cols = [c.replace(c.split("_rel")[0].split("_gap")[0], c.split("_rel")[0].split("_gap")[0] + "_v2", 1)
                 if c in dep else c for c in cols]
@@ -105,6 +115,9 @@ def run_fold(e, y, variants):
                 "gbm": lambda d, v=v: om.gbm_fit(d, feats=feats_for(v, NOMKT), market=False)[0]}
         if v == "prodmu":
             fits = {"logit": lambda d: mu_logit_fit(d, feats_for("prodmu", LOGIT_X))}
+        if v in PARTS:
+            fits = {"logit": (lambda d, v=v: mu_logit_fit(d, feats_for(v, LOGIT_X))) if "mu" in PARTS[v]
+                    else (lambda d, v=v: om.logit_fit(d, feats_for(v, LOGIT_X)))}
         if v == "baseline" and RATING:
             def fit_rating(d, y=y):
                 f, m = rating.fit(d)
@@ -175,6 +188,7 @@ def main():
     global RATING
     RATING = args.rating
     variants = ["baseline"] + args.variants
+    om.EXTRA_PROJ = any(v in PARTS for v in variants)
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
     con = duckdb.connect(str(figure.DB), read_only=True)
@@ -224,6 +238,17 @@ def main():
         L += ["", "## Position map vs production inputs (paired by race)", "",
               diff_table(d, pp, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
               half_table(d, pp[:2], rng).to_markdown(index=False, floatfmt=".4f")]
+    if "prod2" in variants and "prod" in variants:
+        p2 = [("prod2 model logit - prod model logit", "prod2: model logit", "prod: model logit"),
+              ("prod2 blend logit - prod blend logit", "prod2: blend logit", "prod: blend logit")]
+        for k in sorted(P2):
+            if f"prod2-{k}" in variants:
+                p2 += [(f"prod2 model logit - prod2 without {k}", "prod2: model logit", f"prod2-{k}: model logit"),
+                       (f"prod2 blend logit - prod2 without {k}", "prod2: blend logit", f"prod2-{k}: blend logit")]
+        L += ["", "## prod2 (production + v4 settle + GPS pace + figure v2 + rating mu) vs production, and what each"
+              " part adds with the others present (paired by race)", "",
+              diff_table(d, p2, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
+              half_table(d, p2[:2], rng).to_markdown(index=False, floatfmt=".4f")]
     if "prodmu" in variants and "prod" in variants:
         pm = [("prodmu blend logit - prod blend logit", "prodmu: blend logit", "prod: blend logit"),
               ("prodmu model logit - prod model logit", "prodmu: model logit", "prod: model logit")]

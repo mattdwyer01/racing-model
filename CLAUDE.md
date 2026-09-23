@@ -31,6 +31,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
 - Train/test from 2022; walk-forward splits by date only; backtest at SP or captured fixed price, never top fluc.
 - TopRate has no race number; `race_times` (from the dashboard runners file) has it from Apr 2026.
 - RQ XML `DrawNumber` repeats the saddlecloth number; barrier comes from TopRate.
+- Adoption rule: keep a change that improves the model alone (walk-forward, significant) even if the SP blend is
+  unchanged, as long as the blend is not significantly worse. Model quality matters beyond the SP blend (bet-time
+  fixed prices, place / exotics, selection). Test additions together (they overlap) with leave-one-out variants.
 
 ## Automation
 - Data store = assets on the GitHub release tagged `data` (`pipeline/store.py`), not git.
