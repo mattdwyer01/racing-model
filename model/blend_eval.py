@@ -18,6 +18,9 @@ Also reported: blend and SP-calibration weights fitted per state (QLD vs VIC/SA)
 Variants (added inputs on top of the baseline):
   gl   GPS ground loss history: the horse's decayed mean extra ground and width from the rail (QLD GPS runs),
        with a missing flag
+  fig2 figure v2 (ability.fit_coef_next: weights from a next-start WPR regression incl. preliminary WPR,
+       missing sectionals, heavy defeats, heavy going, track class) replaces the win-logit figure in every
+       figure-dependent ability input (form, trend, distance / going / surface fit, prep aptitude)
 """
 import argparse
 import sys
@@ -29,14 +32,24 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import clogit, figure  # noqa: E402
+from model import ability, clogit, figure  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import race_ll  # noqa: E402
 
 FOLDS = [2023, 2024, 2025, 2026]
 NOMKT = [c for c in om.GBM_FEATS if c not in ("log_p_sp", "mkt_rank")]
 LOGIT_X = om.BASE + om.JT + om.PROJ
-EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"]}
+EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": []}
+
+
+def feats_for(v, cols):
+    """Inputs for variant v: baseline inputs + EXTRA[v]; fig2 swaps every figure-dependent input for its v2."""
+    cols = cols + EXTRA[v]
+    if v == "fig2":
+        dep = set(ability.FIG_DEPENDENT) | {f"{c}_{k}" for c in ability.FIG_DEPENDENT for k in ("rel", "gap")}
+        cols = [c.replace(c.split("_rel")[0].split("_gap")[0], c.split("_rel")[0].split("_gap")[0] + "_v2", 1)
+                if c in dep else c for c in cols]
+    return cols
 BOOT = 2000
 KEY = ["race_id", "race_date", "state", "fold"]
 
@@ -65,8 +78,8 @@ def run_fold(e, y, variants):
     c_vec = np.vectorize(c_s.get)(grp_te)
     out["SP calibrated (per state)"] = race_ll(om._softmax(c_vec * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
     for v in variants:
-        fits = {"logit": lambda d, x=EXTRA[v]: om.logit_fit(d, LOGIT_X + x),
-                "gbm": lambda d, x=EXTRA[v]: om.gbm_fit(d, feats=NOMKT + x, market=False)[0]}
+        fits = {"logit": lambda d, v=v: om.logit_fit(d, feats_for(v, LOGIT_X)),
+                "gbm": lambda d, v=v: om.gbm_fit(d, feats=feats_for(v, NOMKT), market=False)[0]}
         for name, fit in fits.items():
             p_bl = np.clip(fit(inner)(bl), 1e-12, 1)
             X = np.c_[np.log(p_bl), bl["log_p_sp"].to_numpy(float)]
@@ -179,6 +192,9 @@ def main():
               diff_table(d, vs_base, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
               "## Variants vs baseline by 6-month period (blend)", "",
               half_table(d, [p for p in vs_base if "blend" in p[0]], rng).to_markdown(index=False, floatfmt=".4f")]
+    if "fig2" in variants:
+        L += ["", "## Figure v2 weights by training cut-off (WPR points per unit)", "",
+              pd.DataFrame(om.FIG2_COEF).to_markdown(floatfmt=".3f")]
     wt = pd.DataFrame(wts).T
     L += ["", "## Weights (fitted on training data only)", "", wt.to_markdown(floatfmt=".3f")]
     out = ROOT / f"reports/blend_eval{suffix}.md"

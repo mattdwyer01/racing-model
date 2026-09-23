@@ -27,6 +27,7 @@ from model import ability, clogit, figure, jt, projection  # noqa: E402
 from model.validate_figure import FIG, eval_set, race_ll  # noqa: E402
 
 JT = jt.COLS
+FIG2_COEF = {}                                     # figure v2 weights by training cut-off (set by build)
 BASE = list(dict.fromkeys(FIG + ability.ALL))      # figure components' history + ability features
 PROJ = projection.OUT
 REL = ["dm", "best3", "fig_last", "h_class", "j_ae", "t_ae", "h_ae", "j_sr", "t_sr", "proj_pace"]
@@ -56,7 +57,11 @@ def build_features(con, train_end):
     d = ability.load(con)
     h = figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
-    extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"]
+    coef2 = ability.fit_coef_next(d, train_end)
+    a2 = ability.features(d, coef2)[["run_id"] + ability.FIG_DEPENDENT]
+    a = a.merge(a2.rename(columns={c: c + "_v2" for c in ability.FIG_DEPENDENT}), on="run_id")
+    FIG2_COEF[str(train_end)[:10]] = coef2
+    extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"] + [c + "_v2" for c in ability.FIG_DEPENDENT]
     px, _, _ = projection.project(projection.frame(con, h), train_end)
     e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left") \
         .merge(px[["run_id"] + PROJ], on="run_id", how="left")
@@ -67,7 +72,7 @@ def build_features(con, train_end):
 def add_context(e, mkt="log_p_sp"):
     e = e.copy()
     g = e.groupby("race_id")
-    for c in REL:
+    for c in REL + [c + "_v2" for c in REL if c + "_v2" in e]:
         e[c + "_rel"] = e[c] - g[c].transform("mean")
         e[c + "_gap"] = e[c] - g[c].transform("max")
     e["mkt_rank"] = e.groupby("race_id")[mkt].rank(ascending=False)

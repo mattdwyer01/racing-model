@@ -73,6 +73,29 @@ def fit_coef(h, train_end):
     return {"wpr": 1.0, **{c: float(b["h_" + c] / b["h_wpr"]) for c in comps}}
 
 
+FIG2_COMPS = ["s_early", "s_l600", "wt_rel", "settle", "shape", "pace", "s_early_miss", "prelim", "far_beaten",
+              "heavy", "loc_p", "loc_c"]
+
+
+def fit_coef_next(d, train_end, since="2021-01-01"):
+    """Figure v2 weights: OLS of the NEXT start's WPR on this run's WPR and components.
+
+    Pairs where both runs have a result and the next start is before train_end (this run from `since`).
+    Weights are returned in WPR points (component coefficient / WPR coefficient), so fig = wpr + sum(c_j x_j).
+    """
+    t = d.sort_values(["horse_id", "race_date", "run_id"])
+    nxt = t.groupby("horse_id")["wpr"].shift(-1)
+    nxt_date = t.groupby("horse_id")["race_date"].shift(-1)
+    m = t["wpr"].notna() & nxt.notna() & (nxt_date < train_end) & (t["race_date"] >= since)
+    X = np.c_[np.ones(m.sum()), t.loc[m, ["wpr"] + FIG2_COMPS].to_numpy(float)]
+    b = np.linalg.lstsq(X, nxt[m].to_numpy(float), rcond=None)[0]
+    return {"wpr": 1.0, **{c: float(b[i + 2] / b[1]) for i, c in enumerate(FIG2_COMPS)}}
+
+
+FIG_DEPENDENT = ["dm", "fig_last", "best3", "best10", "mean3", "trend", "dist_fit", "going_fit", "surface_fit",
+                 "fu_apt", "su_apt"]
+
+
 def features(d, coef):
     d = d.copy()
     d["fig"] = figure.figure(d, coef)

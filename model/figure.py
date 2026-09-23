@@ -40,6 +40,10 @@ select r.run_id, r.race_id, r.horse_id, r.race_date, ra.distance dist, ra.field_
   r.days_since_start, r.prep_run, r.career_starts_in_data,
   -- post-race components (become history)
   r.res_wpr wpr, r.res_s_early s_early, r.res_s_l600 s_l600,
+  (r.res_wpr_status = 'Preliminary')::int prelim,
+  least(greatest(coalesce(r.res_margin_l, 0) - 5, 0), 20) far_beaten,
+  (coalesce(ra.going_num, 4) >= 9)::int heavy,
+  (ra.location_class = 'P')::int loc_p, (ra.location_class = 'C')::int loc_c,
   r.weight_kg - avg(r.weight_kg) over (partition by r.race_id) wt_rel,
   (r.res_pos800 - 1) / greatest(ra.field_size - 1, 1) settle,
   ra.res_shape_early shape{gps_cols}
@@ -75,6 +79,8 @@ def components(con=None):
     d["settle"] = d["settle"].clip(0, 1).fillna(0.5)
     d["shape"] = d["shape"].fillna(0.0)
     d["pace"] = d["shape"] * (1 - d["settle"])
+    for c in ["prelim", "far_beaten", "heavy", "loc_p", "loc_c"]:
+        d[c] = d[c].fillna(0).astype(float)
     d["gl_miss"] = d["gl"].isna().astype(float)
     d[["gl", "rail"]] = d[["gl", "rail"]].fillna(0.0)
     return d
