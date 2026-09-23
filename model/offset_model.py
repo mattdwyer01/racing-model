@@ -33,7 +33,8 @@ GBM_FEATS = ability.ALL + JT + PROJ + [f"{c}_rel" for c in REL] + [f"{c}_gap" fo
 GBM_NOPROJ = [c for c in GBM_FEATS if not (c in PROJ or c.startswith("proj_"))]
 PARAMS = dict(num_leaves=15, learning_rate=0.03, min_data_in_leaf=1000, feature_fraction=0.7,
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0, verbose=-1, num_threads=4, seed=1)
-# tuning grid, picked per fold on the inner validation window only
+# tuning grid, picked per fold on the inner validation window only (off by default: in the
+# 2023-2026 walk-forward the grid points differed by <0.001 on inner validation and tuning did not help)
 GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
         dict(num_leaves=31, min_data_in_leaf=300, learning_rate=0.03),
         dict(num_leaves=63, min_data_in_leaf=300, learning_rate=0.02),
@@ -122,7 +123,7 @@ def _gbm_train(tr, va, offset, rounds=None, extra=None, feats=None):
     return lgb.train(params, dtr, rounds)
 
 
-def gbm_fit(tr, tune=True, feats=None):
+def gbm_fit(tr, tune=False, feats=None):
     """Pick rounds on the last 20% of train (by date), refit on all of train. Returns (predict fn, model, rounds)."""
     cut = tr["race_date"].quantile(0.8)
     inner, va = tr[tr.race_date <= cut], tr[tr.race_date > cut]
@@ -135,7 +136,7 @@ def gbm_fit(tr, tune=True, feats=None):
     rounds = max(rounds, 20)
     off = _score_fn(tr)
     m = _gbm_train(tr, None, off, rounds, extra=best, feats=feats)
-    m.chosen = (best, rounds, {str(p): round(sc, 5) for p, _, sc in trials})
+    m.chosen = (best, rounds, {str(p): round(float(sc), 5) for p, _, sc in trials})
     return (lambda df: _softmax(m.predict(df[feats].to_numpy(float)) + off(df), df["race"].to_numpy())), m, rounds
 
 
