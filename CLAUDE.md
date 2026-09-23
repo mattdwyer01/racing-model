@@ -44,6 +44,8 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   SP + figure beats calibrated SP by 0.001 (2023-2026 walk-forward).
 - Ground loss (`ingest/gps_link.py` -> `gps_runs`, `validate_gps.py`): +0.21 WPR per extra metre;
   improves the figure on QLD but adds nothing over SP (market prices past ground loss).
+- RQ distance travelled at Doomben and Ipswich from 2026 no longer tracks barrier or settle (rail distance
+  still does); masked in `gps_link.SUSPECT_DIST`. Worth asking RQ / Triple S.
 - RQ `race_time_s` is about 1.9s longer than the official time; use the winner's `time_s`.
 
 ## Next build step

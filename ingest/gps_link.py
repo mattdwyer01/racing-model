@@ -10,7 +10,8 @@ Every column except run_id/race_id/source is an in-race measurement (res_ prefix
     res_gps_rail_m      average distance from the rail over the race (m)
     res_gps_extra_l600_m  (RQ only) extra ground in the last 600m vs the field mean
 A run is valid when it finished and distance travelled is within 0.98 to 1.06 of the
-official distance (drops GPS glitches, about 0.1%).
+official distance (drops GPS glitches, about 0.1%). Distance travelled is masked (rail kept) where
+it looks broken: see SUSPECT_DIST.
 """
 import re
 from pathlib import Path
@@ -22,6 +23,9 @@ INTERIM = ROOT / "data/interim"
 
 COURSE_TO_VENUE = {"Ladbrokes Cannon Park": "Cairns"}
 RATIO_OK = (0.98, 1.06)
+# RQ distance travelled stops tracking barrier and settle at these tracks from early 2026
+# (corr with barrier 0.3-0.4 -> 0 or negative) while rail distance stays sane: mask extra ground there.
+SUSPECT_DIST = {("Doomben", "2026-01-01"), ("Ipswich", "2026-01-01")}
 
 
 def venue(course: str) -> str:
@@ -80,12 +84,15 @@ def build(con) -> int:
     key = ["race_date", "venue", "hk"]
     tr = tr[~tr.duplicated(key, keep=False)]
     m = g.merge(tr[key + ["run_id", "race_id", "distance"]], on=key)
-    ratio = m["dist_m"] / m["distance"]
+    for v, since in SUSPECT_DIST:
+        bad = (m["source"] == "rq") & (m["venue"] == v) & (m["race_date"] >= since)
+        m.loc[bad, ["dist_m", "l600_m"]] = float("nan")
+    ratio = (m["dist_m"] / m["distance"]).fillna(1.0)
     m = m[ratio.between(*RATIO_OK)].copy()
     grp = m.groupby("race_key")
     m["extra_m"] = m["dist_m"] - grp["dist_m"].transform("mean")
     m["extra_l600_m"] = m["l600_m"] - grp["l600_m"].transform("mean")
-    m["n_gps"] = grp["dist_m"].transform("size")
+    m["n_gps"] = grp["dist_m"].transform("count")
     out = m.rename(columns={"dist_m": "res_gps_dist_m", "extra_m": "res_gps_extra_m", "rail_m": "res_gps_rail_m",
                             "extra_l600_m": "res_gps_extra_l600_m"})
     out = out[["run_id", "race_id", "source", "n_gps", "res_gps_dist_m", "res_gps_extra_m",
