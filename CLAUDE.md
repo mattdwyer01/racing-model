@@ -70,6 +70,13 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Price timing (`reports/price_timing.md`, 2026, git snapshots): the snapshots are 1.5 to 3 hours old even at
     "T-2" and far behind SP (1.88 vs 1.854). Blend minus calibrated price: VIC/SA -0.0016 at T-60 to -0.0002 at
     T-2 (n.s.); QLD +0.0030 to +0.0034 (worse). Inconclusive; needs the Vultr TAB log at true T-10 / T-2.
+  - prod2 (`blend_eval_prod2.md`, leave-one-out): production + rating mu + v4 settle + GPS pace, without figure
+    v2, is -0.0034 model alone (QLD -0.0057), blend level. Figure v2 hurts once rating mu is in (+0.0019);
+    v4 settle and GPS pace add 0.0000 on top. So the gain is rating mu: ADOPTED in `production.py`
+    (r_mu, r_sigma; rating model refitted inside each training window). v4 / GPS pace kept for the speed map.
+  - Race simulation (`race_sim.md`): no gain (blend +0.0002). Finishing-order model (`order_model.md`):
+    discounted Plackett-Luce (2nd 0.75-0.78, 3rd 0.59-0.64) beats Harville by a wide margin; blend vs SP in QLD
+    exacta -0.0052, trifecta -0.0079. Betting test at SP (`betting_test.md`): nothing significant.
   - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).
   - Caveat: history uses each past run's CURRENT WPR (TopRate revises Preliminary to Final); on race day some
     were still preliminary. Mild look-ahead the leakage test cannot catch; needs dated WPR snapshots.

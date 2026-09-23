@@ -41,7 +41,7 @@ from model.validate_figure import race_ll  # noqa: E402
 
 FOLDS = [2023, 2024, 2025, 2026]
 G = production.GROUPS
-S1_X = list(dict.fromkeys(G["ability"] + G["form shape"] + G["comments"] + G["ground loss (past runs)"] +
+S1_X = list(dict.fromkeys([c for c in G["ability"] if c not in production.MU] + G["form shape"] + G["comments"] + G["ground loss (past runs)"] +
                           ["trial_pos_debut", "trial_marg_debut", "age2", "age3", "age7", "female"]))
 S2_X = list(dict.fromkeys(G["distance / going"] + [c for c in G["prep"] if c not in S1_X] + ["wt_rel_today"] +
                           G["jockey / trainer"]))

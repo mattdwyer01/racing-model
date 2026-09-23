@@ -1,5 +1,5 @@
 """Production model: conditional logit on figure + ability + jockey/trainer + race-day projection + run comments,
-plus past ground-loss credit, blended with the market, and expressed in WPR points so every horse's rating can be read as
+plus past ground-loss credit and the rating model's expected WPR (r_mu, r_sigma; model alone -0.0033, blend level), blended with the market, and expressed in WPR points so every horse's rating can be read as
 ability + bonuses / penalties.
 
     python model/production.py --train-end 2026-01-01      # train, save data/models/logit_<date>.pkl,
@@ -24,14 +24,15 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import clogit, extra_history, figure, position_map  # noqa: E402
+from model import clogit, extra_history, figure, position_map, rating  # noqa: E402
 from model import offset_model as om  # noqa: E402
 
 GL = ["h_gl", "h_gl_miss", "h_rail"]     # past extra ground / width credit (QLD GPS); kept by decision, not for blend gain
 COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS + GL))
-WPR_LEVEL = ["h_wpr", "dm", "fig_last", "best3", "best10", "mean3"]
+MU = ["r_mu", "r_sigma"]   # rating model (rating.py): expected WPR vs the field and its uncertainty (adopted Sep 2026)
+WPR_LEVEL = ["h_wpr", "dm", "fig_last", "best3", "best10", "mean3", "r_mu"]
 GROUPS = {
-    "ability": WPR_LEVEL + ["h_class", "log_n", "h_none", "h_last_wpr"],
+    "ability": WPR_LEVEL + ["r_sigma", "h_class", "log_n", "h_none", "h_last_wpr"],
     "form shape": ["trend", "h_s_early", "h_s_l600", "h_s_early_miss", "h_settle", "h_shape", "h_pace",
                    "h_settle_miss", "h_wt_rel"],
     "distance / going": ["dist_ratio", "dist_abs", "dist_fit", "going_fit", "surface_fit"],
@@ -68,6 +69,17 @@ def _fit_raw(tr, cols):
     return pd.Series(b / sd.to_numpy(), index=cols)
 
 
+def add_mu(rm, df):
+    """r_mu (rating model's expected WPR minus the field mean) and r_sigma for every row of df."""
+    f2 = rating.add_fig_sd(df)
+    mu = pd.Series(rm.mu(f2), index=df.index)
+    return df.assign(r_mu=mu - mu.groupby(df["race_id"].to_numpy()).transform("mean"), r_sigma=rm.sigma(f2))
+
+
+def fit_mu(rows):
+    return rating.RatingModel().fit(rating.add_fig_sd(rows))
+
+
 def utility(df, beta):
     return df[beta.index].to_numpy(float) @ beta.to_numpy()
 
@@ -77,13 +89,17 @@ def train(con, train_end, e=None):
     tr = _race(e[e.race_date < train_end].copy())
     cut = tr["race_date"].quantile(0.75)
     inner, bl = _race(tr[tr.race_date <= cut].copy()), _race(tr[tr.race_date > cut].copy())
-    b_in = _fit_raw(inner, COLS)
+    rm_in = fit_mu(inner)
+    inner, bl = add_mu(rm_in, inner), add_mu(rm_in, bl)
+    b_in = _fit_raw(inner, COLS + MU)
     p_bl = np.clip(om._softmax(utility(bl, b_in), bl["race"].to_numpy()), 1e-12, 1)
     a, b = clogit.fit(np.c_[np.log(p_bl), bl["log_p_sp"].to_numpy(float)], bl["race"].to_numpy(), bl["won"].to_numpy())
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
-    beta = _fit_raw(tr, COLS)
+    rm = fit_mu(tr)
+    tr = add_mu(rm, tr)
+    beta = _fit_raw(tr, COLS + MU)
     unit = beta[WPR_LEVEL].sum()
-    m = {"train_end": str(train_end)[:10], "beta": beta, "wpr_unit": unit, "a": a, "b": b, "c": c,
+    m = {"train_end": str(train_end)[:10], "beta": beta, "wpr_unit": unit, "a": a, "b": b, "c": c, "rating": rm,
          "blend_window": f"{bl.race_date.min():%d %b %Y} to {bl.race_date.max():%d %b %Y}"}
     return m, e
 
@@ -97,6 +113,8 @@ def wpr_table(m):
 def card(m, race_df, market="log_p_sp"):
     """Per-horse breakdown for one or more races: WPR-point contributions vs the field, by group, and prices."""
     df = _race(race_df.sort_values(["race_id", "barrier_pct"]).copy())
+    if "rating" in m and "r_mu" in m["beta"].index:
+        df = add_mu(m["rating"], df)
     X = df[m["beta"].index].astype(float)
     Xd = X - X.groupby(df["race_id"].to_numpy()).transform("mean")
     contrib = Xd * m["beta"] / m["wpr_unit"]
