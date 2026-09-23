@@ -3,7 +3,8 @@
 Called by build_core when data/interim/{rq,rc}_gps_runs.parquet exist. Match key:
 race date + venue + normalised horse name (TopRate has no race number).
 
-Every column except run_id/race_id/source is an in-race measurement (res_ prefix):
+src_race / tab_no: the source's race key and saddlecloth (to join the per-section files).
+Every column except run_id/race_id/source/src_race/tab_no is an in-race measurement (res_ prefix):
     res_gps_dist_m      distance travelled (m)
     res_gps_extra_m     distance travelled minus the mean of valid finishers in the race
                         (+ = covered more ground than the field)
@@ -61,7 +62,8 @@ def _rq():
         share = ((at["rank"] - 1) / (n - 1).clip(lower=1)).clip(0, 1)
         r = r.join(pd.Series(share.to_numpy(), index=pd.MultiIndex.from_frame(at[["race_code", "tab_no"]]),
                              name=f"early{mark}"), on=["race_code", "tab_no"])
-    return pd.DataFrame({"source": "rq", "race_key": r["race_key"], "race_date": pd.to_datetime(r["race_date"]),
+    return pd.DataFrame({"source": "rq", "race_key": r["race_key"], "src_race": r["race_code"].astype(str),
+                         "tab_no": r["tab_no"], "race_date": pd.to_datetime(r["race_date"]),
                          "venue": r["course"].map(venue), "horse": r["horse"],
                          "dist_m": r["dist_travelled_m"], "rail_m": r["rail_m"], "l600_m": r["l600_m"],
                          "early200": r["early200"], "early400": r["early400"]})
@@ -76,6 +78,8 @@ def _rc():
     r = r[fin.between(1, 40)].copy()
     date = pd.to_datetime(r["start_utc"], utc=True).dt.tz_convert("Australia/Melbourne").dt.tz_localize(None).dt.normalize()
     return pd.DataFrame({"source": "rc", "race_key": "rc" + r["meet_code"].astype(str) + "_" + r["race_no"].astype(str),
+                         "src_race": r["meet_code"].astype(str) + "_" + r["race_no"].astype(str),
+                         "tab_no": pd.to_numeric(r["tab_no"], errors="coerce"),
                          "race_date": date, "venue": r["venue"].map(venue), "horse": r["horse"],
                          "dist_m": r["dist_travelled_m"], "rail_m": pd.to_numeric(r["rail_avg_m"], errors="coerce"),
                          "l600_m": float("nan"), "early200": float("nan"), "early400": float("nan")})
@@ -107,7 +111,7 @@ def build(con) -> int:
     out = m.rename(columns={"dist_m": "res_gps_dist_m", "extra_m": "res_gps_extra_m", "rail_m": "res_gps_rail_m",
                             "extra_l600_m": "res_gps_extra_l600_m", "early200": "res_gps_early200",
                             "early400": "res_gps_early400"})
-    out = out[["run_id", "race_id", "source", "n_gps", "res_gps_dist_m", "res_gps_extra_m",
+    out = out[["run_id", "race_id", "source", "src_race", "tab_no", "n_gps", "res_gps_dist_m", "res_gps_extra_m",
                "res_gps_rail_m", "res_gps_extra_l600_m", "res_gps_early200", "res_gps_early400"]].drop_duplicates("run_id")
     con.register("gps_df", out)
     con.execute("create or replace table gps_runs as select * from gps_df")

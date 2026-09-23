@@ -21,6 +21,8 @@ Variants (added inputs on top of the baseline):
   fig2 figure v2 (ability.fit_coef_next: weights from a next-start WPR regression incl. preliminary WPR,
        missing sectionals, heavy defeats, heavy going, track class) replaces the win-logit figure in every
        figure-dependent ability input (form, trend, distance / going / surface fit, prep aptitude)
+  gpsx GPS section history (QLD): relative speed early / late, top speed, trouble, stride, places gained
+  comments  stewards' and video comment history: trouble / health flags and the scored video verdict tag
 """
 import argparse
 import sys
@@ -32,14 +34,15 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import ability, clogit, figure  # noqa: E402
+from model import ability, clogit, extra_history, figure  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import race_ll  # noqa: E402
 
 FOLDS = [2023, 2024, 2025, 2026]
 NOMKT = [c for c in om.GBM_FEATS if c not in ("log_p_sp", "mkt_rank")]
 LOGIT_X = om.BASE + om.JT + om.PROJ
-EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": []}
+EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": [],
+         "gpsx": extra_history.GX_FEATS, "comments": extra_history.CM_FEATS}
 
 
 def feats_for(v, cols):
