@@ -73,9 +73,10 @@ RC_ALIASES = {
     "ladbrokes park lakeside": "sandown lakeside",
     "ladbrokes park": "sandown hillside",
     "yarra valley": "yarra glen",
+    "murray bridge": "murray bridge gh",   # racing.com drops 'GH' (Gifford Hill); old track closed 2019
 }
 SPONSOR_RE = re.compile(r"^(sportsbet|bet365|apiam|ladbrokes|tab|neds|pointsbet|picklebet|southside|"
-                        r"thoroughbred club|aquis)[\s-]+(park[\s-]+)?", re.I)   # 'bet365 Park Wodonga' -> 'wodonga'
+                        r"thoroughbred club|aquis|thomas farms( rc)?)[\s-]+(park[\s-]+)?", re.I)   # 'bet365 Park Wodonga' -> 'wodonga'
 
 
 def norm_track(name: str) -> str:
@@ -221,6 +222,14 @@ class CalendarIndex:
         # (e.g. a sponsor name) qualifies, but a real different meeting (Pakenham) never does
         if allow_single and len(free) == 1 and not same and not self._is_known_track(free[0]):
             return str(free[0]["race_meet_id"])
+        # one meeting that TopRate splits over two track names (Sandown Hillside/Lakeside,
+        # Morphettville/Morphettville Parks): share the already-matched meeting with the same first word
+        if allow_single and not same:
+            shared = [it for it in self.day(date_) if str(it["race_meet_id"]) in taken
+                      and (state is None or it.get("state") == state)
+                      and {first_word(it.get("name")), first_word(it.get("location_name"))} & words]
+            if len({str(it["race_meet_id"]) for it in shared}) == 1:
+                return str(shared[0]["race_meet_id"])
         return None
 
     _known: set | None = None
