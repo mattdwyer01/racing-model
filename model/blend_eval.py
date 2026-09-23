@@ -83,6 +83,7 @@ def feats_for(v, cols):
     return cols
 BOOT = 2000
 RATING = False          # set by --rating
+LOGIT_ONLY = False      # set by --logit-only (skip the GBM fits)
 RATING_TABLES = {}
 KEY = ["race_id", "race_date", "state", "fold"]
 
@@ -113,6 +114,8 @@ def run_fold(e, y, variants):
     for v in variants:
         fits = {"logit": lambda d, v=v: om.logit_fit(d, feats_for(v, LOGIT_X)),
                 "gbm": lambda d, v=v: om.gbm_fit(d, feats=feats_for(v, NOMKT), market=False)[0]}
+        if LOGIT_ONLY:
+            fits.pop("gbm")
         if v == "prodmu":
             fits = {"logit": lambda d: mu_logit_fit(d, feats_for("prodmu", LOGIT_X))}
         if v in PARTS:
@@ -184,9 +187,12 @@ def main():
     ap.add_argument("--variants", nargs="*", default=[], choices=[k for k in EXTRA if k != "baseline"])
     ap.add_argument("--tag", default=None, help="suffix for the report and per-race file (default: variants)")
     ap.add_argument("--rating", action="store_true", help="add the explicit rating model (rating.py) to the baseline")
+    ap.add_argument("--logit-only", action="store_true", help="skip the GBM fits (faster)")
     args = ap.parse_args()
     global RATING
     RATING = args.rating
+    global LOGIT_ONLY
+    LOGIT_ONLY = args.logit_only
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
     tag = args.tag or "_".join(variants[1:])
