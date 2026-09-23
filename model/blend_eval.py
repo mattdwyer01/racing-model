@@ -46,7 +46,21 @@ LOGIT_X = om.BASE + om.JT + om.PROJ
 EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": [],
          "gpsx": extra_history.GX_FEATS, "comments": extra_history.CM_FEATS,
          "prod": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"],
-         "posmap": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] + position_map.FEATS}
+         "posmap": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] + position_map.FEATS,
+         "prodmu": extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"]}
+MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
+
+
+def mu_logit_fit(d, cols):
+    """Logit on cols + MU; the rating model is fitted on the same training rows d (never on the rows it scores)."""
+    m = rating.RatingModel().fit(rating.add_fig_sd(d))
+
+    def add(df):
+        df2 = rating.add_fig_sd(df)
+        mu = pd.Series(m.mu(df2), index=df.index)
+        return df.assign(r_mu=mu - mu.groupby(df["race_id"].to_numpy()).transform("mean"), r_sigma=m.sigma(df2))
+    f = om.logit_fit(add(d), cols + MU)
+    return lambda df: f(add(df))
 
 
 def feats_for(v, cols):
@@ -89,6 +103,8 @@ def run_fold(e, y, variants):
     for v in variants:
         fits = {"logit": lambda d, v=v: om.logit_fit(d, feats_for(v, LOGIT_X)),
                 "gbm": lambda d, v=v: om.gbm_fit(d, feats=feats_for(v, NOMKT), market=False)[0]}
+        if v == "prodmu":
+            fits = {"logit": lambda d: mu_logit_fit(d, feats_for("prodmu", LOGIT_X))}
         if v == "baseline" and RATING:
             def fit_rating(d, y=y):
                 f, m = rating.fit(d)
@@ -208,11 +224,17 @@ def main():
         L += ["", "## Position map vs production inputs (paired by race)", "",
               diff_table(d, pp, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
               half_table(d, pp[:2], rng).to_markdown(index=False, floatfmt=".4f")]
+    if "prodmu" in variants and "prod" in variants:
+        pm = [("prodmu blend logit - prod blend logit", "prodmu: blend logit", "prod: blend logit"),
+              ("prodmu model logit - prod model logit", "prodmu: model logit", "prod: model logit")]
+        L += ["", "## Rating mu as a logit input vs production inputs (paired by race)", "",
+              diff_table(d, pm, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
+              half_table(d, pm[:1], rng).to_markdown(index=False, floatfmt=".4f")]
     if len(variants) > 1:
         vs_base = [(f"{v} blend {n} - baseline blend {n}", f"{v}: blend {n}", f"baseline: blend {n}")
-                   for v in variants[1:] for n in ["logit", "gbm"]] + \
+                   for v in variants[1:] for n in names[v] if n != "rating"] + \
                   [(f"{v} model {n} - baseline model {n}", f"{v}: model {n}", f"baseline: model {n}")
-                   for v in variants[1:] for n in ["logit", "gbm"]]
+                   for v in variants[1:] for n in names[v] if n != "rating"]
         L += ["", "## Variants vs baseline (paired by race)", "",
               diff_table(d, vs_base, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
               "## Variants vs baseline by 6-month period (blend)", "",
