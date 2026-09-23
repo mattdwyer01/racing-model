@@ -59,7 +59,8 @@ def components(con=None):
                      gps_join=GPS_JOIN if has_gps else "")
     d = con.sql(sql).df()
     d["race_date"] = pd.to_datetime(d["race_date"])
-    d = d[d["wpr"].notna()].copy()
+    # keep runs with no result yet (upcoming races): they are scored, but carry no weight in any history
+    d["has_res"] = d["wpr"].notna().astype(float)
 
     # impute missing sectionals from wpr + distance, fitted on 2019-2021 only
     fit_rows = d["race_date"].dt.year.between(2019, 2021)
@@ -80,16 +81,21 @@ def components(con=None):
 
 
 def history(d, half_life_runs=HALF_LIFE_RUNS, half_life_days=HALF_LIFE_DAYS, k=K):
-    """Decayed mean of each component over the horse's prior starts (pre-race safe)."""
+    """Decayed mean of each component over the horse's prior starts (pre-race safe).
+
+    Only prior starts with a result count; the current row's own result is never used.
+    """
     d = d.sort_values(["horse_id", "race_date", "run_id"]).reset_index(drop=True)
     g = d.groupby("horse_id", sort=False)
     cols = COMPONENTS + ["s_early_miss", "settle_miss", "gl_miss"]
+    if "has_res" not in d:
+        d["has_res"] = d["wpr"].notna().astype(float)
     num = {c: np.zeros(len(d)) for c in cols}
     den = np.zeros(len(d))
     last_wpr = g["wpr"].shift(1)
     for j in range(1, k + 1):
         dt = (d["race_date"] - g["race_date"].shift(j)).dt.days.to_numpy()
-        ok = ~np.isnan(dt)
+        ok = ~np.isnan(dt) & (g["has_res"].shift(j).fillna(0).to_numpy() == 1)
         w = np.where(ok, 0.5 ** ((j - 1) / half_life_runs) * 0.5 ** (np.nan_to_num(dt) / half_life_days), 0.0)
         den += w
         for c in cols:

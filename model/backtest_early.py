@@ -57,7 +57,7 @@ def main(prices):
     tr = add_context(e[e.race_date < start])
     tr = tr.assign(race=pd.factorize(tr["race_id"])[0])
     fns, _, rounds = fit_all(tr)
-    models = {"market": None, "logit: + ability + jt": fns["logit: SP + ability + jt"], "gbm offset": fns["gbm offset"]}
+    models = {"market": None, "logit: + ability + jt": fns["logit: SP + figure + ability + jt"], "gbm offset": fns["gbm offset"]}
     base_te = e[e.race_date >= start].merge(final, on="run_id")
     base_te = base_te[base_te.groupby("race_id")["run_id"].transform("size")
                       == base_te.groupby("race_id")["fx"].transform("count")]

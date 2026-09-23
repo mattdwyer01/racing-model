@@ -6,7 +6,7 @@
 
 Models (all per race, softmax over runners):
     SP (calibrated)       beta * log p_sp
-    logit: SP + ability   conditional logit, as ability.py
+    logit: SP + figure + ability (+ jt, + projection)   conditional logit
     logit: + jt           adds jockey / trainer / horse market-relative form (model/jt.py)
     gbm offset            LightGBM with a custom per-race softmax objective; the score starts from
                           the calibrated SP (fitted on train) and trees learn only the correction.
@@ -24,13 +24,14 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from model import ability, clogit, figure, jt, projection  # noqa: E402
-from model.validate_figure import eval_set, race_ll  # noqa: E402
+from model.validate_figure import FIG, eval_set, race_ll  # noqa: E402
 
 JT = jt.COLS
+BASE = list(dict.fromkeys(FIG + ability.ALL))      # figure components' history + ability features
 PROJ = projection.OUT
 REL = ["dm", "best3", "fig_last", "h_class", "j_ae", "t_ae", "h_ae", "j_sr", "t_sr", "proj_pace"]
 CONTEXT = ["log_p_sp", "mkt_rank", "field_n", "is_qld", "is_sa", "dist", "wet"]
-GBM_FEATS = ability.ALL + JT + PROJ + [f"{c}_rel" for c in REL] + [f"{c}_gap" for c in REL] + CONTEXT
+GBM_FEATS = BASE + JT + PROJ + [f"{c}_rel" for c in REL] + [f"{c}_gap" for c in REL] + CONTEXT
 GBM_NOPROJ = [c for c in GBM_FEATS if not (c in PROJ or c.startswith("proj_"))]
 PARAMS = dict(num_leaves=15, learning_rate=0.03, min_data_in_leaf=1000, feature_fraction=0.7,
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0, verbose=-1, num_threads=4, seed=1)
@@ -46,6 +47,11 @@ MAX_ROUNDS, EARLY = 1500, 100
 # ---------------------------------------------------------------- data
 
 def build(con, train_end):
+    return eval_set(build_features(con, train_end))
+
+
+def build_features(con, train_end):
+    """Every model input for every run (no eval filter). Fitted pieces use data before train_end only."""
     d = ability.load(con)
     h = figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
@@ -54,7 +60,7 @@ def build(con, train_end):
     e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left") \
         .merge(px[["run_id"] + PROJ], on="run_id", how="left")
     e[JT] = e[JT].fillna(0.0)
-    return eval_set(e)
+    return e
 
 
 def add_context(e, mkt="log_p_sp"):
@@ -143,9 +149,9 @@ def gbm_fit(tr, tune=False, feats=None):
 
 def fit_all(tr):
     fns = {"SP (calibrated)": logit_fit(tr, ["log_p_sp"]),
-           "logit: SP + ability": logit_fit(tr, ["log_p_sp"] + ability.ALL),
-           "logit: SP + ability + jt": logit_fit(tr, ["log_p_sp"] + ability.ALL + JT),
-           "logit: SP + ability + jt + projection": logit_fit(tr, ["log_p_sp"] + ability.ALL + JT + PROJ)}
+           "logit: SP + figure + ability": logit_fit(tr, ["log_p_sp"] + BASE),
+           "logit: SP + figure + ability + jt": logit_fit(tr, ["log_p_sp"] + BASE + JT),
+           "logit: SP + figure + ability + jt + projection": logit_fit(tr, ["log_p_sp"] + BASE + JT + PROJ)}
     fns["gbm offset, no projection"] = gbm_fit(tr, feats=GBM_NOPROJ)[0]
     g, m, rounds = gbm_fit(tr)
     fns["gbm offset"] = g
@@ -220,7 +226,7 @@ def fixed_backtest():
                 "se": (v - base).std() / np.sqrt(len(v))} for k, v in ll.items()]
     rng = np.random.default_rng(0)
     rows = []
-    for k in ["logit: SP + ability + jt", "gbm offset"]:
+    for k in ["logit: SP + figure + ability + jt", "gbm offset"]:
         te["p"] = fns[k](te)
         for r in bets(te, "p", "fx", rng):
             rows.append(dict(r, model=k.replace("SP", "fixed")))
@@ -246,7 +252,7 @@ def qld():
         trq = tr[tr.state == "QLD"].copy()
         for df in (tr, te, trq):
             df["race"] = pd.factorize(df["race_id"])[0]
-        cols = ["log_p_sp"] + ability.ALL + JT + PROJ
+        cols = ["log_p_sp"] + BASE + JT + PROJ
         fns = {"SP (calibrated, all-state fit)": logit_fit(tr, ["log_p_sp"]),
                "SP (calibrated, QLD fit)": logit_fit(trq, ["log_p_sp"]),
                "logit, all-state fit": logit_fit(tr, cols),
@@ -266,7 +272,7 @@ def qld():
     base = pooled["SP (calibrated, all-state fit)"]
     L = ["# QLD: all-state vs QLD-only models", "",
          "- Test: QLD races in year Y (2023 to 2026 YTD); fitted on 2022 to Y-1 (all states or QLD only)",
-         "- Features: SP + ability + jockey/trainer + race-day projection (incl. track bias, track x distance"
+         "- Features: SP + figure + ability + jockey/trainer + race-day projection (incl. track bias, track x distance"
          " barrier, speed map)", "",
          "## Log loss", "", tab.T.to_markdown(floatfmt=".4f"), "",
          "## vs SP (calibrated, all-state fit), pooled", "", "| model | diff | se |", "|---|---|---|"]

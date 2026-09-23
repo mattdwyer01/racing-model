@@ -79,7 +79,7 @@ def features(d, coef):
     lag = {c: np.stack([g[c].shift(j).to_numpy(float) for j in range(1, K + 1)], 1)
            for c in ["fig", "dist", "wet", "synth"]}
     days = np.stack([(d["race_date"] - g["race_date"].shift(j)).dt.days.to_numpy(float) for j in range(1, K + 1)], 1)
-    ok = ~np.isnan(days)
+    ok = ~np.isnan(days) & ~np.isnan(lag["fig"])   # prior starts with a result only
     w = np.where(ok, 0.5 ** (np.arange(K) / figure.HALF_LIFE_RUNS) * 0.5 ** (np.nan_to_num(days) / figure.HALF_LIFE_DAYS), 0)
     den = w.sum(1)
     has = den > 0
@@ -88,7 +88,7 @@ def features(d, coef):
 
     f = pd.DataFrame(index=d.index)
     f["dm"] = np.where(has, (w * fig).sum(1) / sdiv, 0)
-    f["fig_last"] = np.where(has, fig[:, 0], 0)
+    f["fig_last"] = np.where(has, fig[np.arange(n), np.argmax(ok, 1)], 0)
     with np.errstate(all="ignore"):
         f["best3"] = np.where(has, np.nanmax(np.where(ok[:, :3], lag["fig"][:, :3], -np.inf), 1), 0)
         f["best10"] = np.where(has, np.nanmax(np.where(ok, lag["fig"], -np.inf), 1), 0)
