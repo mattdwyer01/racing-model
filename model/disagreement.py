@@ -58,10 +58,21 @@ def blend_probs(inner, bl, tr, te, cols):
     return om._softmax(a * np.log(p) + b * te["log_p_sp"].to_numpy(float), te["race"].to_numpy())
 
 
+CKPT = ROOT / "data/interim/disagreement"
+
+
 def run():
+    """Per fold; each fold's runner table is saved to data/interim/disagreement/ and reused on a rerun."""
+    import gc
     con = duckdb.connect(str(figure.DB), read_only=True)
+    CKPT.mkdir(parents=True, exist_ok=True)
     rows = []
     for y in FOLDS:
+        ck = CKPT / f"fold_{y}.parquet"
+        if ck.exists():
+            rows.append(pd.read_parquet(ck))
+            print(y, "loaded", flush=True)
+            continue
         e = om.add_context(om.build(con, f"{y}-01-01"))
         tr = _race(e[e.race_date < f"{y}-01-01"].copy())
         te = _race(e[e.race_date.dt.year == y].copy())
@@ -79,7 +90,11 @@ def run():
                     cache[key] = blend_probs(inner, bl, tr, te, list(cols))
             out[f"d {name}"] = np.log(cache[tuple(with_)]) - np.log(cache[tuple(without)])
             out[f"p {name}"] = cache[tuple(with_)]
-        rows.append(out.assign(fold=y))
+        out = out.assign(fold=y)
+        out.to_parquet(ck)
+        rows.append(out)
+        del e, tr, te, inner, bl, cache
+        gc.collect()
         print(y, "done", flush=True)
     return pd.concat(rows, ignore_index=True)
 
