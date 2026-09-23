@@ -22,15 +22,22 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import ability, clogit, figure, jt  # noqa: E402
+from model import ability, clogit, figure, jt, projection  # noqa: E402
 from model.validate_figure import eval_set, race_ll  # noqa: E402
 
 JT = jt.COLS
-REL = ["dm", "best3", "fig_last", "h_class", "j_ae", "t_ae", "h_ae", "j_sr", "t_sr"]
+PROJ = projection.OUT
+REL = ["dm", "best3", "fig_last", "h_class", "j_ae", "t_ae", "h_ae", "j_sr", "t_sr", "proj_pace"]
 CONTEXT = ["log_p_sp", "mkt_rank", "field_n", "is_qld", "is_sa", "dist", "wet"]
-GBM_FEATS = ability.ALL + JT + [f"{c}_rel" for c in REL] + [f"{c}_gap" for c in REL] + CONTEXT
+GBM_FEATS = ability.ALL + JT + PROJ + [f"{c}_rel" for c in REL] + [f"{c}_gap" for c in REL] + CONTEXT
+GBM_NOPROJ = [c for c in GBM_FEATS if not (c in PROJ or c.startswith("proj_"))]
 PARAMS = dict(num_leaves=15, learning_rate=0.03, min_data_in_leaf=1000, feature_fraction=0.7,
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0, verbose=-1, num_threads=4, seed=1)
+# tuning grid, picked per fold on the inner validation window only
+GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
+        dict(num_leaves=31, min_data_in_leaf=300, learning_rate=0.03),
+        dict(num_leaves=63, min_data_in_leaf=300, learning_rate=0.02),
+        dict(num_leaves=15, min_data_in_leaf=300, learning_rate=0.05, lambda_l2=30.0)]
 MAX_ROUNDS, EARLY = 1500, 100
 
 
@@ -41,7 +48,9 @@ def build(con, train_end):
     h = figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
     extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"]
-    e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left")
+    px, _ = projection.project(projection.frame(con, h), train_end)
+    e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left") \
+        .merge(px[["run_id"] + PROJ], on="run_id", how="left")
     e[JT] = e[JT].fillna(0.0)
     return eval_set(e)
 
@@ -85,7 +94,7 @@ def _score_fn(tr):
     return lambda df: b * df["log_p_sp"].to_numpy(float)
 
 
-def _gbm_train(tr, va, offset, rounds=None):
+def _gbm_train(tr, va, offset, rounds=None, extra=None, feats=None):
     def obj_for(df, off):
         race, y = df["race"].to_numpy(), df["won"].to_numpy(float)
 
@@ -102,32 +111,40 @@ def _gbm_train(tr, va, offset, rounds=None):
             return "race_ll", -np.log(np.clip(p[y == 1], 1e-12, 1)).mean(), False
         return feval
 
-    dtr = lgb.Dataset(tr[GBM_FEATS].to_numpy(float), free_raw_data=False)
-    params = dict(PARAMS, objective=obj_for(tr, offset(tr)))
+    feats = feats or GBM_FEATS
+    dtr = lgb.Dataset(tr[feats].to_numpy(float), free_raw_data=False)
+    params = dict(PARAMS, **(extra or {}), objective=obj_for(tr, offset(tr)))
     if rounds is None:
-        dva = lgb.Dataset(va[GBM_FEATS].to_numpy(float), reference=dtr)
+        dva = lgb.Dataset(va[feats].to_numpy(float), reference=dtr)
         m = lgb.train(params, dtr, MAX_ROUNDS, valid_sets=[dva], feval=feval_for(va, offset),
                       callbacks=[lgb.early_stopping(EARLY, verbose=False)])
-        return m.best_iteration
+        return m.best_iteration, m.best_score["valid_0"]["race_ll"]
     return lgb.train(params, dtr, rounds)
 
 
-def gbm_fit(tr):
+def gbm_fit(tr, tune=True, feats=None):
     """Pick rounds on the last 20% of train (by date), refit on all of train. Returns (predict fn, model, rounds)."""
     cut = tr["race_date"].quantile(0.8)
     inner, va = tr[tr.race_date <= cut], tr[tr.race_date > cut]
     inner = inner.assign(race=pd.factorize(inner["race_id"])[0])
     va = va.assign(race=pd.factorize(va["race_id"])[0])
-    rounds = max(_gbm_train(inner, va, _score_fn(inner)), 20)
+    off_in = _score_fn(inner)
+    feats = feats or GBM_FEATS
+    trials = [(p, *_gbm_train(inner, va, off_in, extra=p, feats=feats)) for p in (GRID if tune else [{}])]
+    best, rounds, score = min(trials, key=lambda t: t[2])
+    rounds = max(rounds, 20)
     off = _score_fn(tr)
-    m = _gbm_train(tr, None, off, rounds)
-    return (lambda df: _softmax(m.predict(df[GBM_FEATS].to_numpy(float)) + off(df), df["race"].to_numpy())), m, rounds
+    m = _gbm_train(tr, None, off, rounds, extra=best, feats=feats)
+    m.chosen = (best, rounds, {str(p): round(sc, 5) for p, _, sc in trials})
+    return (lambda df: _softmax(m.predict(df[feats].to_numpy(float)) + off(df), df["race"].to_numpy())), m, rounds
 
 
 def fit_all(tr):
     fns = {"SP (calibrated)": logit_fit(tr, ["log_p_sp"]),
            "logit: SP + ability": logit_fit(tr, ["log_p_sp"] + ability.ALL),
-           "logit: SP + ability + jt": logit_fit(tr, ["log_p_sp"] + ability.ALL + JT)}
+           "logit: SP + ability + jt": logit_fit(tr, ["log_p_sp"] + ability.ALL + JT),
+           "logit: SP + ability + jt + projection": logit_fit(tr, ["log_p_sp"] + ability.ALL + JT + PROJ)}
+    fns["gbm offset, no projection"] = gbm_fit(tr, feats=GBM_NOPROJ)[0]
     g, m, rounds = gbm_fit(tr)
     fns["gbm offset"] = g
     return fns, m, rounds
@@ -149,7 +166,7 @@ def walk_forward():
             ll = race_ll(f(te), te)
             res[k] = ll.mean()
             per.setdefault(k, []).append(ll)
-        info[y] = (rounds, pd.Series(m.feature_importance("gain"), index=GBM_FEATS))
+        info[y] = (rounds, pd.Series(m.feature_importance("gain"), index=GBM_FEATS), m.chosen)
         rows.append(res)
         print(y, {k: round(float(v), 4) for k, v in res.items() if k != "fold"}, "rounds", rounds, flush=True)
 
@@ -163,11 +180,14 @@ def walk_forward():
 
     L = ["# Market-offset models: walk-forward on SP", "",
          "- Eval set and folds as validate_figure.py (VIC/SA/QLD, test 2023 to 2026 YTD, trained 2022 to Y-1)",
-         "- gbm offset: LightGBM, per-race softmax objective, score = calibrated SP + trees", "",
+         "- gbm offset: LightGBM, per-race softmax objective, score = calibrated SP + trees; features include the race-day projection (model/projection.py); params tuned per fold on inner validation", "",
          "## Log loss by fold", "", tab.T.to_markdown(floatfmt=".4f"), "",
          "## vs SP (calibrated), pooled (negative = better)", "", "| model | diff | se |", "|---|---|---|"]
     L += [f"| {k} | {m:+.4f} | {s:.4f} |" for k, m, s in diffs]
-    L += ["", f"GBM rounds by fold: {', '.join(f'{y}: {v[0]}' for y, v in info.items())}", "",
+    L += ["", "## GBM tuning (chosen on the inner validation window of each fold)", ""]
+    L += [f"- {y}: chose {v[2][0]}, rounds {v[0]}; inner-val loss by grid point {v[2][2]}"
+          for y, v in info.items()]
+    L += ["",
           "## GBM feature importance (share of gain, mean over folds, top 20)", "",
           imp.rename("gain share").to_frame().to_markdown(floatfmt=".3f")]
     out = ROOT / "reports/offset_validation.md"
