@@ -39,6 +39,8 @@ NEW = LB + EP + REL
 RIVAL = ["s1", "s1_rank", "s1_rel", "n_close_ahead", "gap_ahead", "gap_behind", "front_n", "es_gap_front",
          "inside_ahead"]
 X1 = SETTLE_X + NEW
+GPS_X = ["early_hist", "early_n"] + EP             # GPS-derived settle inputs (ablation: stage 1 without them)
+X1_NOGPS = [c for c in X1 if c not in GPS_X]
 X2 = X1 + RIVAL
 FOLDS = [2023, 2024, 2025, 2026]
 N_OOF = 3
@@ -191,13 +193,17 @@ def main():
     for y in FOLDS:
         te_end = f"{y}-01-01"
         s2, s1 = settle(x0, te_end, return_s1=True)
-        xv = x0.assign(v4=s2, v4_s1=s1)
+        trm0 = (x0["race_date"] < te_end) & (x0["race_date"] >= "2019-01-01") & x0["y_settle"].notna()
+        s1_ng = _fit(x0.loc[trm0, X1_NOGPS], x0.loc[trm0, "y_settle"]).predict(x0[X1_NOGPS].to_numpy(float))
+        xv = x0.assign(v4=s2, v4_s1=s1, v4_s1_nogps=s1_ng)
         x3, _, _ = projection.project(x0, te_end)
         xv["v3"] = x3.set_index("run_id")["proj_settle"].reindex(xv["run_id"]).to_numpy()
         te_m = (xv.race_date.dt.year == y) & xv["in_scope"]
         te = xv[te_m]
-        for st, t in [("all", te), ("QLD", te[te.state == "QLD"]), ("VIC/SA", te[te.state != "QLD"])]:
-            for lab in ["v3", "v4_s1", "v4"]:
+        gh = te["ep_n"].fillna(0)
+        for st, t in [("all", te), ("QLD", te[te.state == "QLD"]), ("VIC/SA", te[te.state != "QLD"]),
+                      ("GPS history 2+ runs", te[gh >= 2]), ("no GPS history", te[gh == 0])]:
+            for lab in ["v3", "v4_s1_nogps", "v4_s1", "v4"]:
                 acc += [{"fold": y, "races": st, "model": lab, "metric": "R2", "v": projection._r2(t.y_settle, t[lab])},
                         {"fold": y, "races": st, "model": lab, "metric": "in-race rank corr",
                          "v": projection._spearman_in_race(t, "y_settle", lab)},
@@ -240,6 +246,8 @@ def main():
     L = ["# Settle projection v4 vs v3: walk-forward", "",
          "- Fit 2019 to Y-1, test year Y, VIC/SA/QLD runs. v4_s1 = stage 1 (v3 inputs + lengths back, GPS early"
          " position, field-relative); v4 = stage 2 (+ rival-aware inputs from out-of-fold stage-1 projections)",
+         "- GPS ablation: v4_s1_nogps = stage 1 without the GPS inputs (" + ", ".join(GPS_X) + "); compare with v4_s1."
+         " 'GPS history 2+ runs' = runners with at least 2 past runs that have a GPS early position",
          "- Position bucket log loss: multiclass over the position map's 6 buckets (lead .. 8L+ back at the 800m);"
          " lower is better", "",
          "## Accuracy", "", a.round(4).to_markdown(), "",
