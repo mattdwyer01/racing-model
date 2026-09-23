@@ -31,6 +31,15 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
 - My workspace and GitHub-hosted runners may be blocked by TAB (confirmed) and possibly RQ / racing.com;
   set repo variable `SCRAPER_RUNNER=vultr-au` to move scraping to the Vultr self-hosted runner.
 
+## Model status
+- Per-run figure (`model/figure.py`, `validate_figure.py`): WPR + sectionals + pace (settle x early shape).
+  WPR is already weight adjusted; pace is the main lift. Figure alone 1.997 log loss vs SP 1.786;
+  SP + figure beats calibrated SP by 0.001 (2023-2026 walk-forward).
+- Ground loss (`ingest/gps_link.py` -> `gps_runs`, `validate_gps.py`): +0.21 WPR per extra metre;
+  improves the figure on QLD but adds nothing over SP (market prices past ground loss).
+- RQ `race_time_s` is about 1.9s longer than the official time; use the winner's `time_s`.
+
 ## Next build step
-Per-run performance figure from TopRate (WPR + sectionals, weight and pace adjusted), then add
-ground loss from GPS distance travelled.
+Current-ability model (`model/ability.py`): recent form from figures, spell/prep pattern, trials,
+distance and going suitability, class moves. Then race-day projection (settle, width, expected
+ground loss) and VIC/SA ground loss once the racing.com backfill is in the store.
