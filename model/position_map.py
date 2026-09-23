@@ -66,8 +66,8 @@ def _context(x):
     going_b = pd.cut(x["going_num"].fillna(4), [0, 4, 6, 20], labels=False).astype(str)
     rail_b = pd.cut(x["rail_m"].fillna(-1), [-9, -0.5, 0.5, 3.5, 6.5, 99], labels=False).astype(str)
     trk = x["track"].astype(str)
-    return pd.DataFrame({"g": "all", "t": trk, "td": trk + "|" + dist_b, "go": going_b, "tr": trk + "|" + rail_b},
-                        index=x.index)
+    return pd.DataFrame({"cx_g": "all", "cx_t": trk, "cx_td": trk + "|" + dist_b, "cx_go": going_b,
+                         "cx_tr": trk + "|" + rail_b}, index=x.index)
 
 
 def _fit_levels(df, cell_cols, levels, lam=LAMBDA):
@@ -78,7 +78,7 @@ def _fit_levels(df, cell_cols, levels, lam=LAMBDA):
         keys = [lev] + cell_cols
         t = pd.DataFrame({k: df[k].to_numpy() for k in keys}).assign(wr=df["w"].to_numpy() * r, w=df["w"].to_numpy())
         agg = t.groupby(keys)[["wr", "w"]].sum()
-        eff = (agg["wr"] / (agg["w"] + (0 if lev == "g" else lam))).rename("v").reset_index()
+        eff = (agg["wr"] / (agg["w"] + (0 if lev == "cx_g" else lam))).rename("v").reset_index()
         tables.append((lev, eff))
         r = r - pd.DataFrame({k: df[k].to_numpy() for k in keys}).merge(eff, on=keys, how="left")["v"].fillna(0).to_numpy()
     return tables
@@ -117,7 +117,7 @@ def features(con, px, train_end):
 
     # value maps
     fm = tr & x["r"].notna() & x["pos_b"].notna() & x["pace_b"].notna()
-    pos_tabs = _fit_levels(x[fm], ["pos_b", "pace_b"], ["g", "t", "td", "go", "tr"])
+    pos_tabs = _fit_levels(x[fm], ["pos_b", "pace_b"], ["cx_g", "cx_t", "cx_td", "cx_go", "cx_tr"])
     cells_p = [(p, q) for p in range(len(POS)) for q in range(len(PACE))]
     fw = fm & x["wid_b"].notna()
     xw = x[fw].copy()
@@ -126,7 +126,7 @@ def features(con, px, train_end):
     for lev, eff in pos_tabs:
         own += xw[[lev, "pos_b", "pace_b"]].merge(eff, on=[lev, "pos_b", "pace_b"], how="left")["v"].fillna(0).to_numpy()
     xw["r"] = xw["r"] - own
-    wid_tabs = _fit_levels(xw, ["wid_b", "pace_b"], ["g", "t", "td"])
+    wid_tabs = _fit_levels(xw, ["wid_b", "pace_b"], ["cx_g", "cx_t", "cx_td"])
     cells_w = [(k, q) for k in range(len(WID)) for q in range(len(PACE))]
     MAPS[str(train_end.date())] = {"pos": pos_tabs, "wid": wid_tabs}
 
@@ -162,8 +162,8 @@ def features(con, px, train_end):
 def map_table(train_end, track=None, dist_band=None, going_band="0", rail_band="1"):
     """Readable position x pace map (WPR points) for a context, from a fitted map."""
     tabs = MAPS[train_end]["pos"]
-    ctx = pd.DataFrame({"g": ["all"], "t": [track or ""], "td": [f"{track}|{dist_band}"], "go": [going_band],
-                        "tr": [f"{track}|{rail_band}"]})
+    ctx = pd.DataFrame({"cx_g": ["all"], "cx_t": [track or ""], "cx_td": [f"{track}|{dist_band}"],
+                        "cx_go": [going_band], "cx_tr": [f"{track}|{rail_band}"]})
     cells = [(p, q) for p in range(len(POS)) for q in range(len(PACE))]
     v = _lookup(tabs, ctx, ["pos_b", "pace_b"], cells)[0]
     return pd.DataFrame(v.reshape(len(POS), len(PACE)), index=POS, columns=PACE)
