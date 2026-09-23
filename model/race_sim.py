@@ -3,11 +3,15 @@
     python model/race_sim.py      # walk-forward -> reports/race_sim.md, reports/race_sim_per_runner.csv.gz
 
 Per race, D draws of:
-  settle   latent_i = projected settle share + sigma_i * z_i; ranking the latents gives every runner a position
+  settle   latent_i = projected settle share (v4, projection_v4.py) + sigma_i * z_i; ranking the latents gives every runner a position
            (only one horse can lead; two speed horses cannot both be first). sigma_i grows with thin or noisy
            settle history (fitted: |settle residual| on debut, runs with a position, first up, settle spread)
-  pace     shape = projected early shape + b * (early speed of the 3 drawn leaders - early speed of the 3
-           projected leaders) + noise: a draw where two fast horses both go forward is a hotter race
+  pace     GPS pace (projection_gps.py: leaders' early speed vs the field's late speed), relative to the distance
+           band mean. Projected by a model trained on GPS races (v3 pace inputs, v4 settle); per draw
+           pace = projected + b * (early speed of the 3 drawn leaders - early speed of the 3 projected leaders)
+           + noise (sd and b from held-out GPS races): a draw where two fast horses both go forward is hotter.
+           Buckets: slow / even / fast = terciles of GPS pace on training GPS races. Past runs without GPS are
+           bucketed by TopRate early shape mapped onto the GPS scale (linear fit on GPS races)
   value    V(position bin, pace bin | track, distance, going, rail): WPR points a run in that position and pace is
            worth vs the race average (position_map's shrunk hierarchy, on the 800m position share: leader, then
            fifths of the field)
@@ -37,12 +41,13 @@ from model.validate_figure import race_ll  # noqa: E402
 FOLDS = [2023, 2024, 2025, 2026]
 D = 400                       # draws per race
 N_POS, N_PACE = 6, 3          # leader + fifths of the field; slow / even / fast
-PACE_CUTS = [-2.0, 2.0]
 POSITIONAL = ["proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_adj", "early_rank2",
               "wide_x_slow", "nb_diff_in", "nb_diff_out", "tdx_settle", "tdx_perf"]
 BASE_COLS = [c for c in production.COLS if c not in POSITIONAL]
 PX = ["run_id", "race_id", "race_date", "dist", "track", "going_num", "rail_m", "wpr", "h_wpr", "h_none",
-      "y_settle", "y_shape", "proj_settle", "proj_shape", "es_today", "st_n", "st_sd", "first_up", "field_n"]
+      "y_settle", "y_shape", "proj_settle", "proj_shape", "es_today", "st_n", "st_sd", "first_up", "field_n",
+      "synth", "track_code", "y_lead_early"]
+DIST_BANDS = [0, 1100, 1300, 1600, 2000, 9999]
 BOOT = 2000
 
 
@@ -58,29 +63,57 @@ def _pos_bin(share):
 # ---------------------------------------------------------------- fitted pieces (past rows only)
 
 class SimParts:
-    def fit(self, px, end):
+    """Fitted on past rows only (race_date < end). px: runner frame with sim_settle; rr: race frame (PACE_X,
+    y_shape, gps_pace, dist, race_date) indexed by race_id."""
+
+    def fit(self, px, rr, end):
+        from model.projection import PACE_X, _fit
         p = px[(px["race_date"] < end) & (px["race_date"] >= "2019-01-01")]
-        # value map
-        x = p[p["y_settle"].notna() & p["y_shape"].notna() & p["wpr"].notna() & (p["h_none"] == 0)].copy()
+        R = rr[(rr["race_date"] < end) & (rr["race_date"] >= "2019-01-01")].copy()
+        # GPS pace relative to the distance band; TopRate shape mapped onto that scale for races without GPS
+        R["band"] = pd.cut(R["dist"], DIST_BANDS, labels=False)
+        g = R[R["gps_pace"].notna()].copy()
+        self.band_mean = g.groupby("band")["gps_pace"].mean()
+        g["pace_rel"] = g["gps_pace"] - g["band"].map(self.band_mean)
+        gm = g[g["y_shape"].notna()]
+        self.map_ab = np.polyfit(gm["y_shape"].to_numpy(float), gm["pace_rel"].to_numpy(float), 1)
+        mapped = pd.Series(np.polyval(self.map_ab, R["y_shape"].to_numpy(float)), index=R.index)
+        R["pace_act"] = (R["gps_pace"] - R["band"].map(self.band_mean)).fillna(mapped)   # NaN if neither
+        self.cuts = list(np.percentile(g["pace_rel"], [100 / 3, 200 / 3]))
+        # GPS pace model: noise sd and lead response from held-out (latest 20%) GPS races, then refit on all
+        g = g.sort_values("race_date")
+        n_fit = int(len(g) * 0.8)
+        m = _fit(g.iloc[:n_fit][PACE_X], g.iloc[:n_fit]["pace_rel"])
+        ho = g.iloc[n_fit:].copy()
+        ho["proj"] = m.predict(ho[PACE_X].to_numpy(float))
+        s = p[p["y_settle"].notna() & p["sim_settle"].notna()]
+        esf = self._esf(s, "y_settle").to_frame("act").join(self._esf(s, "sim_settle").rename("proj"))
+        ho = ho.join(esf.rename(columns={"proj": "esf_proj", "act": "esf_act"})).dropna(subset=["esf_act", "esf_proj"])
+        dx = (ho["esf_act"] - ho["esf_proj"]).to_numpy()
+        dy = (ho["pace_rel"] - ho["proj"]).to_numpy()
+        self.b = float(dx @ dy / (dx @ dx))
+        self.pace_sd = float(np.std(dy - self.b * dx))
+        self.pace_holdout_corr = float(np.corrcoef(ho["pace_rel"], ho["proj"])[0, 1])
+        self.pace_model = _fit(g[PACE_X], g["pace_rel"])
+        self._pace_x = PACE_X
+        # value map on every past run with a position and a pace
+        x = p[p["y_settle"].notna() & p["wpr"].notna() & (p["h_none"] == 0)].copy()
+        x["pace_act"] = x["race_id"].map(R["pace_act"])
+        x = x[x["pace_act"].notna()]
         res = x["wpr"] - x["h_wpr"]
         x["r"] = res - res.groupby(x["race_id"]).transform("mean")
         x["w"] = 0.5 ** ((pd.Timestamp(end) - x["race_date"]).dt.days.clip(lower=0) / position_map.HALF_LIFE_DAYS)
         x["pos_b"] = _pos_bin(x["y_settle"])
-        x["pace_b"] = np.digitize(x["y_shape"], PACE_CUTS)
+        x["pace_b"] = np.digitize(x["pace_act"], self.cuts)
         x = pd.concat([x, position_map._context(x)], axis=1)
         self.tabs = position_map._fit_levels(x, ["pos_b", "pace_b"], ["cx_g", "cx_t", "cx_td", "cx_go", "cx_tr"])
         # settle noise
-        s = p[p["y_settle"].notna() & p["proj_settle"].notna()]
-        Z = self._z(s)
-        self.gamma = np.linalg.lstsq(Z, np.abs(s["y_settle"] - s["proj_settle"]).to_numpy(float), rcond=None)[0]
-        # pace response to who leads
-        r = self._esf(s, "y_settle").to_frame("esf_act").join(self._esf(s, "proj_settle").rename("esf_proj"))
-        r = r.join(s.groupby("race_id")[["y_shape", "proj_shape"]].first()).dropna()
-        dx = (r["esf_act"] - r["esf_proj"]).to_numpy()
-        dy = (r["y_shape"] - r["proj_shape"]).to_numpy()
-        self.b = float(dx @ dy / (dx @ dx))
-        self.pace_sd = float(np.std(dy - self.b * dx))
+        self.gamma = np.linalg.lstsq(self._z(s), np.abs(s["y_settle"] - s["sim_settle"]).to_numpy(float), rcond=None)[0]
         return self
+
+    def pace_proj(self, rr):
+        """Projected GPS pace (relative to the distance band) per race_id."""
+        return pd.Series(self.pace_model.predict(rr[self._pace_x].to_numpy(float)), index=rr.index)
 
     @staticmethod
     def _z(df):
@@ -104,13 +137,13 @@ class SimParts:
 
 def draws(df, parts, seed=0):
     """Simulated position value per runner and draw, (n_rows, D) float32, plus P(lead) per runner.
-    df sorted by race; needs proj_settle, proj_shape, es_today, sigma inputs and context columns."""
+    df sorted by race; needs sim_settle, sim_pace0 (projected GPS pace), es_today, sigma inputs and context."""
     rng = np.random.default_rng(seed)
     V = parts.values(df).astype(np.float32)
     sig = parts.sigma(df)
-    ps = df["proj_settle"].fillna(0.5).to_numpy(float)
+    ps = df["sim_settle"].fillna(0.5).to_numpy(float)
     es = df["es_today"].fillna(df["es_today"].median()).to_numpy(float)
-    shape0 = df["proj_shape"].fillna(0).to_numpy(float)
+    shape0 = df["sim_pace0"].fillna(0).to_numpy(float)
     out = np.zeros((len(df), D), np.float32)
     lead = np.zeros(len(df))
     race = df["race_id"].to_numpy()
@@ -132,7 +165,7 @@ def draws(df, parts, seed=0):
             esf0 = np.take_along_axis(es[ii], p0, -1).mean(-1)
             shape = shape0[ii[:, 0]][:, None] + parts.b * (esf - esf0[:, None]) + \
                 parts.pace_sd * rng.standard_normal((R, D))
-            pace = np.digitize(shape, PACE_CUTS)                             # (R, D)
+            pace = np.digitize(shape, parts.cuts)                            # (R, D)
             cell = pb * N_PACE + pace[:, :, None]                            # (R, D, n)
             v = np.take_along_axis(np.broadcast_to(V[ii][:, None, :, :], (R, D, n, V.shape[1])),
                                    cell[..., None], -1)[..., 0]
@@ -159,10 +192,15 @@ def _nll(p, df):
 
 def run_fold(con, y):
     te_end = f"{y}-01-01"
+    from model import projection, projection_gps
     om.PX_KEEP[:] = PX
+    om.SETTLE_V4 = True
     e = om.add_context(om.build(con, te_end))
     px = om.LAST_PX.pop("px")
-    extra = [c for c in PX if c not in e.columns]
+    px["sim_settle"] = px["proj_settle_v4"].fillna(px["proj_settle"])
+    rr = projection._pace_frame(px.assign(proj_settle=px["sim_settle"]))
+    rr = rr.join(projection_gps.gps_pace(con).rename("gps_pace"))
+    extra = [c for c in PX + ["sim_settle"] if c not in e.columns]
     e = e.merge(px[["run_id"] + extra], on="run_id", how="left")
     e = e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
     tr = _race(e[e.race_date < te_end].copy())
@@ -179,10 +217,11 @@ def run_fold(con, y):
         p_prod = om._softmax(production.utility(score, b_prod), race)
         u = production.utility(score, b_base)
         p_base = om._softmax(u, race)
+        score = score.assign(sim_pace0=score["race_id"].map(parts.pace_proj(rr)).to_numpy())
         Vd, lead = draws(score, parts)
         return p_prod, p_base, u, unit, Vd, lead
 
-    parts_bl = SimParts().fit(px, cut)
+    parts_bl = SimParts().fit(px, rr, cut)
     p_prod, p_base, u, unit, Vd, _ = fit_all(inner, bl, parts_bl)
     race = bl["race"].to_numpy()
     k = minimize_scalar(lambda k: _nll(sim_probs(u, Vd, k, unit, race), bl), bounds=(0, 3), method="bounded",
@@ -196,7 +235,7 @@ def run_fold(con, y):
     w3 = clogit.fit(np.c_[lp["prod"], lp["sim"], lp["sp"]], race, won)
     del Vd
 
-    parts = SimParts().fit(px, te_end)
+    parts = SimParts().fit(px, rr, te_end)
     p_prod, p_base, u, unit, Vd, lead = fit_all(tr, te, parts)
     race = te["race"].to_numpy()
     p_sim = sim_probs(u, Vd, k, unit, race)
@@ -216,6 +255,7 @@ def run_fold(con, y):
     runners["fold"] = y
     ll = {name: race_ll(p, te) for name, p in P.items()}
     info = {"k": k, "unit": unit, "pace b": parts.b, "pace sd": parts.pace_sd,
+            "pace cuts": tuple(np.round(parts.cuts, 2)), "GPS pace holdout corr": parts.pace_holdout_corr,
             "blend prod a/b": tuple(np.round(w["prod"], 3)), "blend sim a/b": tuple(np.round(w["sim"], 3)),
             "3-way prod/sim/sp": tuple(np.round(w3, 3))}
     winners = te[te.won == 1][["race_id", "state"]].reset_index(drop=True)
@@ -258,6 +298,7 @@ def main():
     cal = c.groupby("bin", observed=True).agg(runners=("run_id", "size"), sim=("sim p_lead", "mean"),
                                               actual=("actual led", "mean"))
     L = ["# Race-shape simulation", "",
+         "- Settle: v4 projection; pace: GPS pace model (terciles of distance-relative GPS pace)",
          f"- {D} joint draws per race of settling positions and pace; position value V(position, pace | track,"
          " distance, going, rail) in WPR points; win probability exact per draw under the logit's Gumbel noise",
          "- Base logit = production inputs minus the settle / pace projection terms (replaced by the simulation);"

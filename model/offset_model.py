@@ -45,6 +45,7 @@ GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
         dict(num_leaves=15, min_data_in_leaf=300, learning_rate=0.05, lambda_l2=30.0)]
 MAX_ROUNDS, EARLY = 1500, 100
 PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
+SETTLE_V4 = False  # with PX_KEEP: also keep the v4 settle projection (projection_v4.settle) as proj_settle_v4
 LAST_PX = {}
 
 
@@ -64,9 +65,18 @@ def build_features(con, train_end):
     a = a.merge(a2.rename(columns={c: c + "_v2" for c in ability.FIG_DEPENDENT}), on="run_id")
     FIG2_COEF[str(train_end)[:10]] = coef2
     extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"] + [c + "_v2" for c in ability.FIG_DEPENDENT]
-    px, _, _ = projection.project(projection.frame(con, h), train_end)
+    fr = projection.frame(con, h)
+    px, _, _ = projection.project(fr, train_end)
     if PX_KEEP:
-        LAST_PX["px"] = px[PX_KEEP].copy()
+        keep = px[PX_KEEP].copy()
+        if SETTLE_V4:
+            from model import projection_v4
+            f4 = projection_v4.add_features(con, fr)
+            v4 = pd.Series(projection_v4.settle(f4, train_end), index=f4["run_id"].to_numpy())
+            keep["proj_settle_v4"] = keep["run_id"].map(v4)
+            del f4
+        LAST_PX["px"] = keep
+    del fr
     xh = extra_history.features(con, d, train_end)   # GPS sections + run comments history (variants only)
     pm = position_map.features(con, px, train_end)   # expected position / width value (variants only)
     e = h.merge(a[["run_id"] + extra], on="run_id") \
