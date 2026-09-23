@@ -36,7 +36,8 @@ sys.path.insert(0, str(ROOT))
 from model import clogit, figure  # noqa: E402
 
 PARAMS = dict(objective="regression", num_leaves=63, learning_rate=0.05, min_data_in_leaf=200,
-              feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, verbose=-1, num_threads=4, seed=1)
+              feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, verbose=-1, num_threads=4, seed=1,
+              deterministic=True, force_row_wise=True)   # identical results run to run
 ROUNDS = 400
 K = 8
 

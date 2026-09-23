@@ -34,7 +34,8 @@ CONTEXT = ["log_p_sp", "mkt_rank", "field_n", "is_qld", "is_sa", "dist", "wet"]
 GBM_FEATS = BASE + JT + PROJ + [f"{c}_rel" for c in REL] + [f"{c}_gap" for c in REL] + CONTEXT
 GBM_NOPROJ = [c for c in GBM_FEATS if not (c in PROJ or c.startswith("proj_"))]
 PARAMS = dict(num_leaves=15, learning_rate=0.03, min_data_in_leaf=1000, feature_fraction=0.7,
-              bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0, verbose=-1, num_threads=4, seed=1)
+              bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0, verbose=-1, num_threads=4, seed=1,
+              deterministic=True, force_row_wise=True)   # identical results run to run
 # tuning grid, picked per fold on the inner validation window only (off by default: in the
 # 2023-2026 walk-forward the grid points differed by <0.001 on inner validation and tuning did not help)
 GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),

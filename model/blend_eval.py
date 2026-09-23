@@ -2,6 +2,7 @@
 
     python model/blend_eval.py                    # baseline only -> reports/blend_eval.md
     python model/blend_eval.py --variants gl      # baseline + variant(s), paired comparison vs baseline
+    python model/blend_eval.py --tag det          # report / per-race file suffix (keeps earlier runs' files)
 
 Per fold (test year Y, 2023 to 2026 YTD; VIC/SA/QLD races, as validate_figure.py):
   model (no market): conditional logit, and LightGBM (per-race softmax, no SP offset), on figure + ability +
@@ -12,6 +13,7 @@ Per fold (test year Y, 2023 to 2026 YTD; VIC/SA/QLD races, as validate_figure.py
   SP raw = normalised 1 / SP.
 Every variant uses the same fold builds, so comparisons with the baseline are paired race by race.
 Per-race losses for all variants: reports/blend_per_race.csv.gz.
+Also reported: blend and SP-calibration weights fitted per state (QLD vs VIC/SA) on the same window.
 
 Variants (added inputs on top of the baseline):
   gl   GPS ground loss history: the horse's decayed mean extra ground and width from the rail (QLD GPS runs),
@@ -53,6 +55,15 @@ def run_fold(e, y, variants):
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
     out["SP calibrated"] = race_ll(om._softmax(c * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
     weights = {"SP calibration c": c, "blend window": f"{bl.race_date.min():%d %b %Y} to {bl.race_date.max():%d %b %Y}"}
+    # per-state weights (QLD vs VIC/SA), same blend window
+    grp_bl, grp_te = np.where(bl["state"] == "QLD", "QLD", "VIC/SA"), np.where(te["state"] == "QLD", "QLD", "VIC/SA")
+    c_s = {}
+    for g_ in ["QLD", "VIC/SA"]:
+        b_ = _race(bl[grp_bl == g_].copy())
+        c_s[g_] = clogit.fit(b_[["log_p_sp"]].to_numpy(float), b_["race"].to_numpy(), b_["won"].to_numpy())[0]
+        weights[f"SP calibration c, {g_}"] = c_s[g_]
+    c_vec = np.vectorize(c_s.get)(grp_te)
+    out["SP calibrated (per state)"] = race_ll(om._softmax(c_vec * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
     for v in variants:
         fits = {"logit": lambda d, x=EXTRA[v]: om.logit_fit(d, LOGIT_X + x),
                 "gbm": lambda d, x=EXTRA[v]: om.gbm_fit(d, feats=NOMKT + x, market=False)[0]}
@@ -65,6 +76,17 @@ def run_fold(e, y, variants):
             out[f"{v}: blend {name}"] = race_ll(
                 om._softmax(a * np.log(p_te) + b * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
             weights[f"{v} {name} a"], weights[f"{v} {name} b"] = a, b
+            ab = {}
+            for g_ in ["QLD", "VIC/SA"]:
+                m_ = grp_bl == g_
+                b_ = _race(bl[m_].copy())
+                ab[g_] = clogit.fit(np.c_[np.log(p_bl[m_]), b_["log_p_sp"].to_numpy(float)], b_["race"].to_numpy(),
+                                    b_["won"].to_numpy())
+                weights[f"{v} {name} a, {g_}"], weights[f"{v} {name} b, {g_}"] = ab[g_]
+            a_vec = np.where(grp_te == "QLD", ab["QLD"][0], ab["VIC/SA"][0])
+            b_vec = np.where(grp_te == "QLD", ab["QLD"][1], ab["VIC/SA"][1])
+            out[f"{v}: blend {name} (per state)"] = race_ll(
+                om._softmax(a_vec * np.log(p_te) + b_vec * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
     winners = te[te.won == 1][["race_id", "race_date", "state"]].reset_index(drop=True)
     return pd.concat([winners, pd.DataFrame(out)], axis=1).assign(fold=y), weights
 
@@ -103,7 +125,11 @@ def half_table(d, pairs, rng):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--variants", nargs="*", default=[], choices=[k for k in EXTRA if k != "baseline"])
-    variants = ["baseline"] + ap.parse_args().variants
+    ap.add_argument("--tag", default=None, help="suffix for the report and per-race file (default: variants)")
+    args = ap.parse_args()
+    variants = ["baseline"] + args.variants
+    tag = args.tag or "_".join(variants[1:])
+    suffix = f"_{tag}" if tag else ""
     con = duckdb.connect(str(figure.DB), read_only=True)
     per_race, wts = [], {}
     for y in FOLDS:
@@ -112,7 +138,7 @@ def main():
         wts[y] = w
         print(y, {k: round(float(r[k].mean()), 4) for k in r.columns if k not in KEY}, flush=True)
     d = pd.concat(per_race, ignore_index=True)
-    d.to_csv(ROOT / "reports/blend_per_race.csv.gz", index=False, float_format="%.6f")
+    d.to_csv(ROOT / f"reports/blend_per_race{suffix}.csv.gz", index=False, float_format="%.6f")
     cols = [c for c in d.columns if c not in KEY]
     rng = np.random.default_rng(0)
 
@@ -135,6 +161,15 @@ def main():
          "## By 6-month period: blend minus SP calibrated", "",
          half_table(d, [(f"{v} {n}", f"{v}: blend {n}", "SP calibrated") for v in variants for n in ["logit", "gbm"]],
                     rng).to_markdown(index=False, floatfmt=".4f")]
+    ps = [(f"{v} blend {n} (per state) - SP calibrated (per state)", f"{v}: blend {n} (per state)", "SP calibrated (per state)")
+          for v in variants for n in ["logit", "gbm"]] + \
+         [(f"{v} blend {n} (per state) - {v} blend {n} (pooled weights)", f"{v}: blend {n} (per state)", f"{v}: blend {n}")
+          for v in variants for n in ["logit", "gbm"]] + \
+         [("SP calibrated (per state) - SP calibrated (pooled)", "SP calibrated (per state)", "SP calibrated")]
+    L += ["", "## Per-state weights (QLD vs VIC/SA fitted separately on the same blend window)", "",
+          diff_table(d, ps, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
+          "## Per-state blend minus per-state calibrated SP, by 6-month period", "",
+          half_table(d.assign(**{"_q": d["state"] == "QLD"}), ps[:2 * len(variants)], rng).to_markdown(index=False, floatfmt=".4f")]
     if len(variants) > 1:
         vs_base = [(f"{v} blend {n} - baseline blend {n}", f"{v}: blend {n}", f"baseline: blend {n}")
                    for v in variants[1:] for n in ["logit", "gbm"]] + \
@@ -146,7 +181,7 @@ def main():
               half_table(d, [p for p in vs_base if "blend" in p[0]], rng).to_markdown(index=False, floatfmt=".4f")]
     wt = pd.DataFrame(wts).T
     L += ["", "## Weights (fitted on training data only)", "", wt.to_markdown(floatfmt=".3f")]
-    out = ROOT / ("reports/blend_eval.md" if len(variants) == 1 else f"reports/blend_eval_{'_'.join(variants[1:])}.md")
+    out = ROOT / f"reports/blend_eval{suffix}.md"
     out.write_text("\n".join(L) + "\n")
     print("\n".join(L))
 
