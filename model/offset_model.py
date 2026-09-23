@@ -66,7 +66,8 @@ def build_features(con, train_end):
     e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left") \
         .merge(px[["run_id"] + PROJ], on="run_id", how="left")
     e[JT] = e[JT].fillna(0.0)
-    return e
+    # fixed row order, so adding columns or merges never changes what the GBM's row sampling sees
+    return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
 
 
 def add_context(e, mkt="log_p_sp"):

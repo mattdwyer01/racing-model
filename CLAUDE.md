@@ -48,6 +48,19 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   GBM blend 1.7856. Logit blend minus SP calibrated -0.0011 (95% -0.0017 to -0.0005); minus SP raw -0.0048.
   Ahead or level in all 8 half-years, significant in 2 (2023 H1, 2024 H1); weight on model a = 0.10-0.15.
 
+- Since then (all vs the baseline, paired by race; runs with `--tag` keep their own report / per-race file):
+  - Edge is QLD only: logit blend minus SP calibrated QLD -0.0029 (95% -0.0039 to -0.0020), VIC/SA +0.0004
+    (n.s.). Fitted weight on the model: QLD 0.16-0.26, VIC/SA 0.02-0.05 (logit), about 0 (GBM).
+  - Per-state blend weights (`blend_eval_det.md`): no net gain (-0.0001 logit, -0.0003 GBM, n.s.); they only
+    turn the model down in VIC/SA. Pooled weights kept.
+  - GPS ground-loss history (`blend_eval_gl.md`): blend -0.0001, n.s. Not adopted.
+  - Figure v2 (`ability.fit_coef_next`, `blend_eval_fig2.md`): next-start WPR regression weights (settle +0.17
+    not -5.6; corrections for missing sectionals, heavy defeats, heavy going, track class). Logit model alone
+    -0.0033 (QLD -0.0055), but blend +0.0001 n.s. and GBM no gain. Not adopted for the blend.
+  - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).
+  - Caveat: history uses each past run's CURRENT WPR (TopRate revises Preliminary to Final); on race day some
+    were still preliminary. Mild look-ahead the leakage test cannot catch; needs dated WPR snapshots.
+
 ## Model status (log loss, 2023-2026 walk-forward, VIC/SA/QLD; SP calibrated = 1.786)
 - Per-run figure (`model/figure.py`, `validate_figure.py`): WPR + sectionals + pace (settle x early shape).
   WPR is already weight adjusted; pace is the main lift. Figure alone 1.997; SP + figure beats SP by 0.001.
