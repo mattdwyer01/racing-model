@@ -64,9 +64,12 @@ def build_features(con, train_end):
     extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"] + [c + "_v2" for c in ability.FIG_DEPENDENT]
     px, _, _ = projection.project(projection.frame(con, h), train_end)
     xh = extra_history.features(con, d, train_end)   # GPS sections + run comments history (variants only)
-    e = h.merge(a[["run_id"] + extra], on="run_id").merge(jt.features(con), on="run_id", how="left") \
+    e = h.merge(a[["run_id"] + extra], on="run_id") \
+        .merge(a[["run_id", "wpr"]].rename(columns={"wpr": "y_wpr"}), on="run_id") \
+        .merge(jt.features(con), on="run_id", how="left") \
         .merge(px[["run_id"] + PROJ], on="run_id", how="left") \
         .merge(xh, on="run_id", how="left")
+    # y_wpr is today's result: a fitting target for the rating model only, never an input
     e[JT] = e[JT].fillna(0.0)
     # fixed row order, so adding columns or merges never changes what the GBM's row sampling sees
     return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)

@@ -34,7 +34,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import ability, clogit, extra_history, figure  # noqa: E402
+from model import ability, clogit, extra_history, figure, rating  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import race_ll  # noqa: E402
 
@@ -54,6 +54,8 @@ def feats_for(v, cols):
                 if c in dep else c for c in cols]
     return cols
 BOOT = 2000
+RATING = False          # set by --rating
+RATING_TABLES = {}
 KEY = ["race_id", "race_date", "state", "fold"]
 
 
@@ -83,6 +85,12 @@ def run_fold(e, y, variants):
     for v in variants:
         fits = {"logit": lambda d, v=v: om.logit_fit(d, feats_for(v, LOGIT_X)),
                 "gbm": lambda d, v=v: om.gbm_fit(d, feats=feats_for(v, NOMKT), market=False)[0]}
+        if v == "baseline" and RATING:
+            def fit_rating(d, y=y):
+                f, m = rating.fit(d)
+                RATING_TABLES[y] = (m.table(), m.gamma, m.scale)   # last call = fit on all training rows
+                return f
+            fits["rating"] = fit_rating
         for name, fit in fits.items():
             p_bl = np.clip(fit(inner)(bl), 1e-12, 1)
             X = np.c_[np.log(p_bl), bl["log_p_sp"].to_numpy(float)]
@@ -142,7 +150,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--variants", nargs="*", default=[], choices=[k for k in EXTRA if k != "baseline"])
     ap.add_argument("--tag", default=None, help="suffix for the report and per-race file (default: variants)")
+    ap.add_argument("--rating", action="store_true", help="add the explicit rating model (rating.py) to the baseline")
     args = ap.parse_args()
+    global RATING
+    RATING = args.rating
     variants = ["baseline"] + args.variants
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
@@ -163,8 +174,9 @@ def main():
     by_fold.loc["pooled"] = [len(d)] + [d[c].mean() for c in cols]
     allr = pd.Series(True, index=d.index)
     subsets = [("all", allr), ("QLD", d["state"] == "QLD"), ("VIC/SA", d["state"] != "QLD")]
+    names = {v: [n for n in ["logit", "gbm", "rating"] if f"{v}: blend {n}" in d] for v in variants}
     vs_sp = [(f"{v} blend {n} - SP {s}", f"{v}: blend {n}", f"SP {s}")
-             for v in variants for n in ["logit", "gbm"] for s in ["raw", "calibrated"]]
+             for v in variants for n in names[v] for s in ["raw", "calibrated"]]
     L = ["# SP vs model vs blend (same test races)", "",
          "- Test: VIC/SA/QLD races, one year per fold (2023 to 2026 YTD), every runner with an SP and one winner",
          "- Model: no market inputs (figure + ability + jockey/trainer + race-day projection); logit and LightGBM",
@@ -175,17 +187,17 @@ def main():
          "## Log loss by fold", "", by_fold.T.to_markdown(floatfmt=".4f"), "",
          "## Differences vs SP, pooled", "", diff_table(d, vs_sp, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
          "## By 6-month period: blend minus SP calibrated", "",
-         half_table(d, [(f"{v} {n}", f"{v}: blend {n}", "SP calibrated") for v in variants for n in ["logit", "gbm"]],
+         half_table(d, [(f"{v} {n}", f"{v}: blend {n}", "SP calibrated") for v in variants for n in names[v]],
                     rng).to_markdown(index=False, floatfmt=".4f")]
     ps = [(f"{v} blend {n} (per state) - SP calibrated (per state)", f"{v}: blend {n} (per state)", "SP calibrated (per state)")
-          for v in variants for n in ["logit", "gbm"]] + \
+          for v in variants for n in names[v]] + \
          [(f"{v} blend {n} (per state) - {v} blend {n} (pooled weights)", f"{v}: blend {n} (per state)", f"{v}: blend {n}")
-          for v in variants for n in ["logit", "gbm"]] + \
+          for v in variants for n in names[v]] + \
          [("SP calibrated (per state) - SP calibrated (pooled)", "SP calibrated (per state)", "SP calibrated")]
     L += ["", "## Per-state weights (QLD vs VIC/SA fitted separately on the same blend window)", "",
           diff_table(d, ps, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
           "## Per-state blend minus per-state calibrated SP, by 6-month period", "",
-          half_table(d.assign(**{"_q": d["state"] == "QLD"}), ps[:2 * len(variants)], rng).to_markdown(index=False, floatfmt=".4f")]
+          half_table(d, ps[:sum(len(names[v]) for v in variants)], rng).to_markdown(index=False, floatfmt=".4f")]
     if len(variants) > 1:
         vs_base = [(f"{v} blend {n} - baseline blend {n}", f"{v}: blend {n}", f"baseline: blend {n}")
                    for v in variants[1:] for n in ["logit", "gbm"]] + \
@@ -195,6 +207,17 @@ def main():
               diff_table(d, vs_base, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
               "## Variants vs baseline by 6-month period (blend)", "",
               half_table(d, [p for p in vs_base if "blend" in p[0]], rng).to_markdown(index=False, floatfmt=".4f")]
+    if RATING_TABLES:
+        rv = [("rating blend - baseline logit blend", "baseline: blend rating", "baseline: blend logit"),
+              ("rating blend - baseline gbm blend", "baseline: blend rating", "baseline: blend gbm"),
+              ("rating model - baseline logit model", "baseline: model rating", "baseline: model logit")]
+        tab = pd.DataFrame({y: t[0] for y, t in RATING_TABLES.items()})
+        L += ["", "## Rating model vs the baseline models (paired by race)", "",
+              diff_table(d, rv, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
+              "## Rating model: bonus / penalty per unit of each input (WPR points), fit on each fold's training rows", "",
+              tab.to_markdown(floatfmt=".3f"), "",
+              "Uncertainty (sigma) model, WPR points: " + "; ".join(
+                  f"{y}: scale {t[2]:.2f}, intercept {t[1][0]:.2f}" for y, t in RATING_TABLES.items())]
     if "fig2" in variants:
         L += ["", "## Figure v2 weights by training cut-off (WPR points per unit)", "",
               pd.DataFrame(om.FIG2_COEF).to_markdown(floatfmt=".3f")]

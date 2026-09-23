@@ -57,7 +57,9 @@ def main():
     blank = inputs(tmp, a.day, a.train_end)
     tmp.unlink()
     from model import extra_history as eh
-    feats = list(dict.fromkeys(om.GBM_FEATS + ["log_p_sp"] + eh.GX_FEATS + eh.CM_FEATS))
+    from model import rating
+    feats = list(dict.fromkeys(om.GBM_FEATS + ["log_p_sp"] + eh.GX_FEATS + eh.CM_FEATS
+                               + [c for c in rating.X_COLS + rating.SIGMA_COLS if c != "fig_sd"]))
     assert full.index.equals(blank.index), "different runs on the test day"
     diff = (full[feats].astype(float) - blank[feats].astype(float)).abs().max().sort_values(ascending=False)
     nan_mismatch = (full[feats].isna() != blank[feats].isna()).sum()
