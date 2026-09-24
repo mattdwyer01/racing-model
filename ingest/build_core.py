@@ -160,6 +160,15 @@ from live_runners where run_id is not null;
 # the runners file (finish, margin, WPR, SP, comments; no in-running positions or sectionals). Mapped to the results-file
 # columns (class names to TopRate codes; track = the venue's usual track, or its synthetic track when the going
 # is Synthetic; age / sex / breeding from the horse's latest results row). Scratched runners are left out.
+# toprate.au stopped supplying weights (results from 12 Sep 2026). TopRate's poller now fills the runners file's
+# weight_carried from TAB race cards (TopRate tab_fields.py): copy it into resulted rows that have none.
+WEIGHT_FILL_SQL = """
+update tr_raw set weightCarried = l.weight_carried
+from (select run_id, max(try_cast(weight_carried as double)) weight_carried from live_runners
+      where try_cast(weight_carried as double) is not null group by run_id) l
+where tr_raw.weightCarried is null and tr_raw.run_id = l.run_id;
+"""
+
 UPCOMING_SQL = """
 create or replace temp table _venue_track as
 select venue, arg_max(track, n + case when track = venue then 1e9 else 0 end) track, arg_max(track, case when going in ('Synthetic','Sand','Dirt') then n end) synth_track
@@ -183,7 +192,7 @@ select l.race_id, l.run_id, l.horse_id::bigint horse_id, l.horse, l.date::timest
        when l.race_class like 'Restricted % Metro Wins Last Year' then 'R' || regexp_extract(l.race_class, '(\\d+)', 1) || 'MWLY'
        when l.race_class like 'Restricted % Metro Wins' then 'R' || regexp_extract(l.race_class, '(\\d+)', 1) || 'MW'
        else upper(l.race_class) end race_class,
-  nullif(l.barrier, 0) barrier, l.weight_carried weightCarried, l.jockey, l.trainer,
+  nullif(l.barrier, 0) barrier, try_cast(l.weight_carried as double) weightCarried, l.jockey, l.trainer,
   h.horse_age + coalesce(year(l.date::date) - year(h.last_date), 0) horse_age, h.horse_sex,
   h.sire_id, h.sire, h.dam_id, h.dam, h.sire_country, h.dam_country,
   count(*) over (partition by l.race_id) field_size,
@@ -209,6 +218,7 @@ def build(db=DB):
     if LIVE.exists():
         con.execute(LIVE_SQL)
         con.execute(UPCOMING_SQL)
+        con.execute(WEIGHT_FILL_SQL)
     con.execute(TABLE_SQL)
     gps_link.build(con)   # table gps_runs, when GPS parquets are in data/interim
     return con

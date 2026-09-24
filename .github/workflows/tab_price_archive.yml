@@ -1,7 +1,7 @@
 name: TAB price archive
 
-# Copies the TAB fixed-odds log written on the Vultr box into the data store
-# (tab_prices_YYYY-MM.csv.gz on the `data` release). Needs a self-hosted runner
+# Copies the TAB fixed-odds log and race-card fields log written on the Vultr box into the data store
+# (tab_prices_YYYY-MM.csv.gz / tab_fields_YYYY-MM.csv.gz on the `data` release). Needs a self-hosted runner
 # for THIS repo on the Vultr box with the label `vultr-au`, and the repo
 # variable VULTR_RUNNER set to `true` (until then the job is skipped).
 
@@ -26,5 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m pip install --quiet requests
       - run: python3 pipeline/archive_tab_prices.py --months 2
+      - run: python3 pipeline/archive_tab_prices.py --months 2 --kind fields
+        continue-on-error: true     # no fields log until TopRate's tab_fields.py has run
       - if: always()
         run: rm -rf work
