@@ -134,12 +134,34 @@ def day_json(d, rows, results, meta):
     return {"date": str(d), "meetings": [{"track": t, "state": s, "races": rs} for (t, s), rs in meetings.items()]}
 
 
+def race_bias(rows):
+    """Projected track bias per race, as the model applies it: the runners' "track bias" contribution (WPR
+    points, from past meetings at the track: long-run and recent same-rail) regressed within the race on
+    projected settle share (0 leader, 1 last) and barrier share (0 inside, 1 outside).
+    lead = WPR edge of a leader over a backmarker; inside = of the inside draw over the outside draw."""
+    out = {}
+    if "track bias" not in rows:
+        return out
+    for rid, g in rows.groupby("race_id"):
+        g = g.dropna(subset=["track bias", "settle", "barrier"])
+        if len(g) < 4:
+            continue
+        bar = (g["barrier"].rank(method="first") - 1) / max(len(g) - 1, 1)
+        X = np.column_stack([np.ones(len(g)), g["settle"].to_numpy(float), bar.to_numpy(float)])
+        if np.linalg.matrix_rank(X) < 3:
+            continue
+        b = np.linalg.lstsq(X, g["track bias"].to_numpy(float), rcond=None)[0]
+        out[int(rid)] = {"lead": round(float(-b[1]), 2), "inside": round(float(-b[2]), 2)}
+    return out
+
+
 def write_toprate(dest, rows, m, track):
     """racing_model.json for TopRate's frontend (compact keys, see its lib/racingModel.ts)."""
     def f(v):
         v = _clean(v)
         return None if isinstance(v, str) else v
     runners, races = {}, {}
+    bias = race_bias(rows)
     for _, x in rows.iterrows():
         runners[str(int(x["run_id"]))] = {
             "r": f(x.get("projected rating")), "v": f(x.get("rating vs field")),
@@ -151,7 +173,7 @@ def write_toprate(dest, rows, m, track):
         if rid not in races:
             pace = [f(x.get("P(slow)")), f(x.get("P(even)")), f(x.get("P(fast)"))]
             races[rid] = {"pace": pace if None not in pace else None, "pv": f(x.get("pace vs distance avg")),
-                          "on": str(x.get("scored_on"))[:10]}
+                          "on": str(x.get("scored_on"))[:10], "bias": bias.get(int(x["race_id"]))}
     payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": str(m["train_end"])[:10],
                "a": float(m["a"]), "b": float(m["b"]), "posFlagThreshold": f(m.get("pos_flag_thr")),
                "races": races, "runners": runners,
