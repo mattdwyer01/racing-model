@@ -42,7 +42,8 @@ def main():
                          "95% lo": np.percentile(mm, 2.5), "95% hi": np.percentile(mm, 97.5),
                          f"{args.a} mean": m.loc[np.asarray(mask), f"{c} A"].mean(),
                          f"{args.b} mean": m.loc[np.asarray(mask), f"{c} B"].mean()})
-    fold = m.groupby("fold A").apply(lambda g: pd.Series({c: (g[f"{c} A"] - g[f"{c} B"]).mean() for c in args.cols}))
+    fold = m.groupby("fold A").apply(lambda g: pd.Series({c: (g[f"{c} A"] - g[f"{c} B"]).mean() for c in args.cols}),
+                                        include_groups=False)
     L = [f"# {args.a} vs {args.b}: same races, paired", "",
          f"- Races in both runs: {len(m):,} (of {len(a):,} in {args.a}, {len(b):,} in {args.b})",
          "- Negative = first run better. 95% ranges: 2,000 race bootstrap resamples", "",
