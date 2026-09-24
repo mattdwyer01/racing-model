@@ -8,7 +8,7 @@ name: Racing Model -> TopRate dashboard (daily)
 #
 # Needs: secret TOPRATE_PUSH_TOKEN (fine-grained token, Contents read/write on mattdwyer01/toprate).
 # Data store: variable DATA_REPO + secret DATA_TOKEN (private data repo); defaults to this repo's release.
-# The build needs ~10 GB of memory: set the repo variable DASHBOARD_RUNNER to `vultr-au` to run on the Vultr box.
+# Memory: 9.3 GB peak (5-state training, v4 speed map), about 17 min; fits GitHub's 16 GB runners for public repos.
 
 on:
   schedule:
@@ -58,6 +58,8 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Score races and write racing_model.json
+        env:
+          RACING_SPEEDMAP: v4          # full v4 settle speed map (9.3 GB peak with 5-state training)
         run: python -W ignore tools/dashboard_export.py --toprate-dir toprate
 
       - name: Commit to TopRate

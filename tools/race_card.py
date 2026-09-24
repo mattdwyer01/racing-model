@@ -41,7 +41,7 @@ SHOW = ["ability", "form shape", "distance / going", "prep", "race-day projectio
 PACE_NAMES = ["slow", "even", "fast"]
 POS_FEATS = ["pv_adj", "pw_adj"]
 # "lite": speed map from production's v3 settle projection (low memory, for GitHub's free runner); set
-# RACING_SPEEDMAP=v4 for the v4 settle model (needs ~10 GB)
+# RACING_SPEEDMAP=v4 for the v4 settle model (9.3 GB peak with 5-state training; the dashboard job uses it)
 import os  # noqa: E402
 LITE = "lite" if os.environ.get("RACING_SPEEDMAP", "lite") != "v4" else False
 
