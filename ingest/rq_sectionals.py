@@ -193,6 +193,10 @@ def main():
     else:
         runs, secs = parse_all()
         OUT_DIR.mkdir(parents=True, exist_ok=True)
+        for d in (runs, secs):
+            for c in ["tab_no", "cum_dist_m", "race_no", "rank", "finish"]:
+                if c in d:
+                    d[c] = pd.to_numeric(d[c], errors="coerce")
         runs.to_parquet(OUT_DIR / "rq_gps_runs.parquet", index=False)
         secs.to_parquet(OUT_DIR / "rq_gps_sections.parquet", index=False)
         print(f"{runs.race_code.nunique() if len(runs) else 0} races, {len(runs)} runs, {len(secs)} sections")

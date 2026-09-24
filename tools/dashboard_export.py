@@ -147,7 +147,10 @@ def write_toprate(dest, rows, m, track):
 def tracking(arch, res):
     """Model vs market on resulted races, using the projections archived before each race."""
     x = arch.merge(res[["run_id", "finish", "sp"]], on="run_id", how="inner")
+    for c in ["model %", "blend_a", "blend_b", "projected rating", "finish", "sp"]:
+        x[c] = pd.to_numeric(x[c], errors="coerce")      # object dtype after a concat with an empty archive
     x = x[x["finish"].notna() & (x["sp"] > 1)]
+    x = x[~x["race_id"].isin(x.loc[x["model %"].isna(), "race_id"])]   # a runner without a projection
     ok = x.groupby("race_id").agg(n=("run_id", "size"), w=("finish", lambda s: (s == 1).sum()))
     x = x[x["race_id"].isin(ok.index[(ok.n >= 2) & (ok.w == 1)])].copy()
     if x.empty:
