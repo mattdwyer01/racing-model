@@ -18,6 +18,7 @@ conditional logit on the decayed means of each component (see validate_figure.py
 Missing sectionals are imputed from WPR and distance (fit on 2019-2021, before any test
 data); missing settle/shape are set to neutral values and flagged.
 """
+import os
 from pathlib import Path
 
 import duckdb
@@ -31,10 +32,13 @@ COMPONENTS = ["wpr", "s_early", "s_l600", "wt_rel", "settle", "shape", "pace", "
 K = 10                  # prior starts used
 HALF_LIFE_RUNS = 3.0    # decay by starts back
 HALF_LIFE_DAYS = 365.0  # and by age of the run
+# States added to the modelled scope on top of tracks.csv's in_scope (VIC/SA/QLD), e.g. RACING_EXTRA_STATES=NSW,WA.
+# Default none, so every existing evaluation reproduces unchanged.
+EXTRA_STATES = [s.strip().upper() for s in os.environ.get("RACING_EXTRA_STATES", "").split(",") if s.strip()]
 
 SQL = """
 select r.run_id, r.race_id, r.horse_id, r.race_date, ra.distance dist, ra.field_size,
-  ra.state, coalesce(ra.in_scope, false) in_scope, ra.full_coverage,
+  ra.state, (coalesce(ra.in_scope, false) or ra.state in ({extra_states})) in_scope, ra.full_coverage,
   r.sp, r.res_won::int won, r.res_finish finish, r.weight_kg,
   r.weight_kg - avg(r.weight_kg) over (partition by r.race_id) wt_rel_today,
   r.days_since_start, r.prep_run, r.career_starts_in_data,
@@ -60,7 +64,8 @@ def components(con=None):
     con = con or duckdb.connect(str(DB), read_only=True)
     has_gps = con.sql("select count(*) from information_schema.tables where table_name = 'gps_runs'").fetchone()[0]
     sql = SQL.format(gps_cols=GPS_COLS if has_gps else ", null::double gl, null::double rail",
-                     gps_join=GPS_JOIN if has_gps else "")
+                     gps_join=GPS_JOIN if has_gps else "",
+                     extra_states=", ".join(f"'{x}'" for x in EXTRA_STATES) or "null")
     d = con.sql(sql).df()
     d["race_date"] = pd.to_datetime(d["race_date"])
     # keep runs with no result yet (upcoming races): they are scored, but carry no weight in any history

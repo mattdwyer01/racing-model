@@ -213,7 +213,8 @@ def main():
     by_fold.insert(0, "races", d.groupby("fold").size())
     by_fold.loc["pooled"] = [len(d)] + [d[c].mean() for c in cols]
     allr = pd.Series(True, index=d.index)
-    subsets = [("all", allr), ("QLD", d["state"] == "QLD"), ("VIC/SA", d["state"] != "QLD")]
+    subsets = [("all", allr), ("QLD", d["state"] == "QLD"), ("VIC/SA", d["state"].isin(["VIC", "SA"]))] + \
+        [(s_, d["state"] == s_) for s_ in ["NSW", "WA"] if (d["state"] == s_).any()]
     names = {v: [n for n in ["logit", "gbm", "rating"] if f"{v}: blend {n}" in d] for v in variants}
     vs_sp = [(f"{v} blend {n} - SP {s}", f"{v}: blend {n}", f"SP {s}")
              for v in variants for n in names[v] for s in ["raw", "calibrated"]]
