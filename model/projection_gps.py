@@ -47,10 +47,10 @@ def _race_pace(s, key, early_mask, lead_rank, late_mask):
 
 def gps_pace(con):
     """gps_pace per race_id (QLD RQ + VIC/SA racing.com Triple S)."""
-    from model.extra_history import RC_SECTIONS, SECTIONS
+    from model.extra_history import RC_SECTIONS, SECTIONS, read_rq_sections
     out = []
     if SECTIONS.exists():
-        s = pd.read_parquet(SECTIONS, columns=["race_code", "tab_no", "cum_dist_m", "rank", "avg_speed_ms"])
+        s = read_rq_sections(columns=["race_code", "tab_no", "cum_dist_m", "rank", "avg_speed_ms"])
         s["race_code"] = s["race_code"].astype(str)
         s = s.rename(columns={"avg_speed_ms": "speed", "tab_no": "run"})
         s = s[s["speed"].between(*SPEED_OK)]

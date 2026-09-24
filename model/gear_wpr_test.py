@@ -55,6 +55,21 @@ def fit_test(fit, test, cols):
     return clogit.probs(test[cols].to_numpy(float), test["race"].to_numpy(), b), b
 
 
+def swap_eval(d, dates, variants):
+    """Two halves by date: fit on one, test on the other, then swapped. Returns per-race losses and weights."""
+    mid = pd.Timestamp(dates[len(dates) // 2])
+    halves = [d["race_date"] < mid, d["race_date"] >= mid]
+    ll, coefs = {}, {}
+    for k, (fm, tm) in enumerate([(halves[0], halves[1]), (halves[1], halves[0])]):
+        fit, test = _race(d[fm].copy()), _race(d[tm].copy())
+        for v, cols in variants.items():
+            p, b = fit_test(fit, test, cols)
+            w = test["won"].to_numpy() == 1
+            ll.setdefault(v, []).append(pd.Series(-np.log(np.clip(p[w], 1e-12, 1)), index=test.loc[w, "race_id"]))
+            coefs[(v, k)] = ", ".join(f"{c} {x:+.3f}" for c, x in zip(cols, b))
+    return pd.DataFrame({v: pd.concat(x) for v, x in ll.items()}), coefs
+
+
 def main():
     con = duckdb.connect(str(figure.DB), read_only=True)
     dates = [r[0] for r in con.sql(f"select distinct race_date from races where race_date between date '{START}' "
@@ -86,44 +101,53 @@ def main():
     for v in list(variants):
         if v not in ("SP alone", "wpr_nett alone"):
             variants[f"{v} blend"] = variants[v] + ["lp_sp"]
-    # two halves by date, fit on one test on the other
-    mid = pd.Timestamp(dates[len(dates) // 2])
-    halves = [d["race_date"] < mid, d["race_date"] >= mid]
-    ll = {}
-    coefs = {}
-    for k, (fm, tm) in enumerate([(halves[0], halves[1]), (halves[1], halves[0])]):
-        fit, test = _race(d[fm].copy()), _race(d[tm].copy())
-        for v, cols in variants.items():
-            p, b = fit_test(fit, test, cols)
-            w = test["won"].to_numpy() == 1
-            ll.setdefault(v, []).append(pd.Series(-np.log(np.clip(p[w], 1e-12, 1)), index=test.loc[w, "race_id"]))
-            coefs[(v, k)] = dict(zip(cols, np.round(b, 3)))
-    L_ = pd.DataFrame({v: pd.concat(x) for v, x in ll.items()})
-    state = d.groupby("race_id")["state"].first() if "state" in d else None
+    # gear_changes is only filled in the runners file from gear_start (Sep 2026): gear variants are fitted and
+    # tested inside that sub-window only (outside it every gear flag is 0 and the swap test is empty)
+    gear_start = d.loc[d["gear_changes"].notna(), "race_date"].min()
+    gd = d[d["race_date"] >= gear_start]
+    gear_dates = sorted(gd["race_date"].unique())
     rng = np.random.default_rng(0)
 
     def boot(x):
         x = x.to_numpy()
         mm = x[rng.integers(0, len(x), (BOOT, len(x)))].mean(1)
         return f"{x.mean():+.4f} ({np.percentile(mm, 2.5):+.4f} to {np.percentile(mm, 97.5):+.4f})"
+
+    full_v = {k: v for k, v in variants.items() if "gear" not in k and "both" not in k}
+    L_, coefs = swap_eval(d, dates, full_v)
+    Lg, coefs_g = swap_eval(gd, gear_dates, variants)
+    by_state = d.groupby("race_id")["state"].first()
     rows = []
+    for a, b in [("+ wpr_nett", "production"), ("+ wpr_nett blend", "production blend"),
+                 ("production blend", "SP alone"), ("wpr_nett alone", "SP alone"), ("wpr_nett alone", "production")]:
+        for sname in ["all", "QLD", "VIC/SA", "NSW", "WA"]:
+            st = by_state.reindex(L_.index)
+            m = np.ones(len(L_), bool) if sname == "all" else (st.isin(["VIC", "SA"]) if sname == "VIC/SA" else st == sname).to_numpy()
+            if m.sum():
+                rows.append({"first": a, "minus": b, "states": sname, "races": int(m.sum()), "diff": boot((L_[a] - L_[b])[m])})
+    rows_g = []
     for a, b in [("+ gear", "production"), ("+ wpr_nett", "production"), ("+ both", "production"),
-                 ("+ gear blend", "production blend"), ("+ wpr_nett blend", "production blend"),
-                 ("+ both blend", "production blend"), ("production blend", "SP alone"),
-                 ("wpr_nett alone", "SP alone"), ("wpr_nett alone", "production")]:
-        rows.append({"first": a, "minus": b, "races": len(L_), "diff": boot(L_[a] - L_[b])})
-    counts = d[gear_cols].sum().astype(int).to_dict()
+                 ("+ both", "+ wpr_nett"), ("+ gear blend", "production blend"), ("+ wpr_nett blend", "production blend"),
+                 ("+ both blend", "production blend"), ("wpr_nett alone", "SP alone")]:
+        rows_g.append({"first": a, "minus": b, "races": len(Lg), "diff": boot(Lg[a] - Lg[b])})
+    counts = gd[gear_cols].sum().astype(int).to_dict()
     L = ["# Gear changes and TopRate wpr_nett on top of the production model", "",
          f"- Window {START} to {END} (runners file only); production trained before {START}, scores every race out"
          f" of sample. States: {', '.join(sorted(d['state'].dropna().unique())) if 'state' in d else '?'}",
          "- Offset logits (log p_production + inputs) fitted on one half of the window, tested on the other, swapped",
-         f"- Races {L_.shape[0]}, runners {len(d)}. Gear counts: {counts}", "",
-         "## Mean race log loss", "", L_.mean().to_frame("log loss").to_markdown(floatfmt=".4f"), "",
-         "## Paired differences (negative = first is better; 95% race bootstrap)", "",
+         f"- wpr_nett: whole window, races {L_.shape[0]}, runners {len(d)}",
+         f"- Gear: gear_changes is only filled from {gear_start:%d %b %Y}, so gear is tested on that sub-window only"
+         f" (same half swap): races {len(Lg)}, runners {len(gd)}. Gear counts: {counts}", "",
+         "## wpr_nett, whole window: mean race log loss", "", L_.mean().to_frame("log loss").to_markdown(floatfmt=".4f"), "",
+         "## wpr_nett, whole window: paired differences (negative = first is better; 95% race bootstrap)", "",
          pd.DataFrame(rows).to_markdown(index=False), "",
          "Leakage check: 'wpr_nett alone - SP alone' well above 0 is expected for a pre-race rating; near or below 0"
          " suggests wpr_nett includes the race's own result.", "",
-         "## Fitted weights (half 1 fit, half 2 fit)", "", pd.Series(coefs).unstack().to_markdown()]
+         f"## Gear (and wpr_nett again), {gear_start:%d %b} to {END}: mean race log loss", "",
+         Lg.mean().to_frame("log loss").to_markdown(floatfmt=".4f"), "",
+         "## Gear sub-window: paired differences", "", pd.DataFrame(rows_g).to_markdown(index=False), "",
+         "## Fitted weights, whole window (half 1 fit, half 2 fit)", "", pd.Series(coefs).unstack().to_markdown(), "",
+         "## Fitted weights, gear sub-window (half 1 fit, half 2 fit)", "", pd.Series(coefs_g).unstack().to_markdown()]
     (ROOT / "reports/gear_wpr_test.md").write_text("\n".join(L) + "\n")
     print("\n".join(L))
 

@@ -57,10 +57,10 @@ def _width(con, runs):
 
 
 def _width_rq(con):
-    from model.extra_history import SECTIONS
+    from model.extra_history import SECTIONS, read_rq_sections
     if not SECTIONS.exists():
         return pd.Series(dtype=float)
-    s = pd.read_parquet(SECTIONS, columns=["race_code", "tab_no", "cum_dist_m", "rail_m"])
+    s = read_rq_sections(columns=["race_code", "tab_no", "cum_dist_m", "rail_m"])
     s = s[s["rail_m"].notna()]
     s["race_code"] = s["race_code"].astype(str)
     key = con.sql("select run_id, src_race race_code, tab_no from gps_runs where source = 'rq'").df()
