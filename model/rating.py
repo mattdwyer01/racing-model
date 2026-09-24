@@ -61,8 +61,14 @@ def win_probs(mu, sigma, race, chunk=1000):
     return out
 
 
-def _dm(df, cols):
+def _filled(df, cols):
+    """Inputs with gaps (e.g. no weight in the dashboard runners file) set to the field average, else 0."""
     X = df[cols].astype(float)
+    return X.fillna(X.groupby(df["race_id"].to_numpy()).transform("mean")).fillna(0.0)
+
+
+def _dm(df, cols):
+    X = _filled(df, cols)
     return X - X.groupby(df["race_id"].to_numpy()).transform("mean")
 
 
@@ -75,18 +81,17 @@ class RatingModel:
         sd[sd == 0] = 1
         Xs = X / sd
         self.beta = np.linalg.solve(Xs.T @ Xs + RIDGE * np.eye(Xs.shape[1]), Xs.T @ y) / sd
-        mu = tr[X_COLS].to_numpy(float) @ self.beta
         res = np.abs(y - (X @ self.beta))
-        Z = np.c_[np.ones(len(tr)), tr[SIGMA_COLS].to_numpy(float)]
+        Z = np.c_[np.ones(len(tr)), _filled(tr, SIGMA_COLS).to_numpy(float)]
         self.gamma = np.linalg.lstsq(Z, res, rcond=None)[0]
         self.scale = 1.0
         return self
 
     def mu(self, df):
-        return df[X_COLS].to_numpy(float) @ self.beta
+        return _filled(df, X_COLS).to_numpy(float) @ self.beta
 
     def sigma(self, df):
-        Z = np.c_[np.ones(len(df)), df[SIGMA_COLS].to_numpy(float)]
+        Z = np.c_[np.ones(len(df)), _filled(df, SIGMA_COLS).to_numpy(float)]
         return np.maximum(Z @ self.gamma * np.sqrt(np.pi / 2), SIGMA_FLOOR)
 
     def calibrate(self, df):

@@ -62,10 +62,17 @@ def _race(df):
     return df.assign(race=pd.factorize(df["race_id"])[0])
 
 
+def _filled(df, cols):
+    """Inputs with gaps (e.g. no weight for races taken from the dashboard runners file) = field average, else 0."""
+    X = df[cols].astype(float)
+    return X.fillna(X.groupby(df["race_id"].to_numpy()).transform("mean")).fillna(0.0)
+
+
 def _fit_raw(tr, cols):
     """Conditional logit; returns raw-unit betas (utility = X @ beta, up to a per-race constant)."""
-    mu, sd = tr[cols].mean(), tr[cols].std().replace(0, 1)
-    b = clogit.fit(((tr[cols] - mu) / sd).to_numpy(float), tr["race"].to_numpy(), tr["won"].to_numpy())
+    X = _filled(tr, cols)
+    mu, sd = X.mean(), X.std().replace(0, 1)
+    b = clogit.fit(((X - mu) / sd).to_numpy(float), tr["race"].to_numpy(), tr["won"].to_numpy())
     return pd.Series(b / sd.to_numpy(), index=cols)
 
 
@@ -81,7 +88,7 @@ def fit_mu(rows):
 
 
 def utility(df, beta):
-    return df[beta.index].to_numpy(float) @ beta.to_numpy()
+    return _filled(df, list(beta.index)).to_numpy(float) @ beta.to_numpy()
 
 
 def train(con, train_end, e=None):
