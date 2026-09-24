@@ -85,6 +85,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Staged model (`staged.md`): ability from a WPR regression is far weaker (+0.035 model alone); the race-shape
     stage S3 adds -0.0071 inside it, but on top of production (`staged_prod_s3.md`) +0.0002 n.s. Not adopted.
     TopRate 2023 res_shape_mid has absurd outliers (sd 9.8 vs 2.5): clip |x| > 12 (done in staged.py only).
+  - vs TopRate Combo (`tools/compare_toprate_combo.py`, `compare_toprate_combo.md`, 2,786 races Apr to Sep 2026,
+    monthly retrain): top pick won 27.5% (Combo 29.5%, Proj 25.8%, SP fav 32.6%); model alone 1.9516 vs Combo
+    1.9308 (+0.021, significant); with SP ours 1.8315 vs Combo 1.8333 (-0.0018 n.s.), ours vs SP -0.0031.
+    Combo's lead is its TopRate rating share: that rating correlates 0.93 with log SP and alone scores 1.868 vs SP
+    1.847, i.e. it behaves like a market price, not independent form.
   - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).
   - Caveat: history uses each past run's CURRENT WPR (TopRate revises Preliminary to Final); on race day some
     were still preliminary. Mild look-ahead the leakage test cannot catch; needs dated WPR snapshots.
