@@ -41,7 +41,7 @@ SHOW = ["ability", "form shape", "distance / going", "prep", "race-day projectio
 PACE_NAMES = ["slow", "even", "fast"]
 POS_FEATS = ["pv_adj", "pw_adj"]
 # "lite": speed map from production's v3 settle projection (low memory, for GitHub's free runner); set
-# RACING_SPEEDMAP=v4 for the v4 settle model (needs ~10 GB)
+# RACING_SPEEDMAP=v4 for the v4 settle model (9.3 GB peak with 5-state training; the dashboard job uses it)
 import os  # noqa: E402
 LITE = "lite" if os.environ.get("RACING_SPEEDMAP", "lite") != "v4" else False
 
@@ -82,12 +82,13 @@ def score(con, train_end, dates, track=None):
     """Card rows for every VIC/SA/QLD race on `dates` with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
     om.EXTRA_PROJ, om.KEEP_SIM = LITE or True, True
+    production.use_training_scope()      # trains on VIC/SA/QLD + NSW/WA; cards stay VIC/SA/QLD (core_scope)
     raw = om.build_features(con, train_end, light="no_posmap", lean=True)
     m, _ = production.train(con, train_end, e=om.add_context(eval_set(raw)))
     info = con.sql(INFO_SQL.format(d=", ".join(f"date '{x}'" for x in dates))).df()
     if track:
         info = info[info["track"].str.contains(track, case=False)]
-    rows = raw[raw["run_id"].isin(info["run_id"]) & raw["in_scope"]]
+    rows = raw[raw["run_id"].isin(info["run_id"]) & raw["core_scope"]]
     if rows.empty:
         return pd.DataFrame(), m
     rows = rows.merge(info[["run_id", "fixed_win_price", "open_price"]], on="run_id", how="left")
@@ -100,7 +101,7 @@ def score(con, train_end, dates, track=None):
     # the market underrates)
     if all(f in raw for f in POS_FEATS):
         pv_all = raw[POS_FEATS].fillna(0).sum(1)
-        recent = raw["in_scope"] & (raw["race_date"] < train_end) & \
+        recent = raw["core_scope"] & (raw["race_date"] < train_end) & \
             (raw["race_date"] >= pd.Timestamp(train_end) - pd.Timedelta(days=730))
         m["pos_flag_thr"] = float(pv_all[recent].quantile(0.9))
         c["pos value"] = c[POS_FEATS].fillna(0).sum(1)

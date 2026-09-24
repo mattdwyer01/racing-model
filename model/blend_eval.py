@@ -92,6 +92,14 @@ def _race(df):
     return df.assign(race=pd.factorize(df["race_id"])[0])
 
 
+STATE_GROUPS = ["QLD", "VIC/SA", "NSW", "WA"]
+
+
+def state_group(s):
+    """Blend-weight group per race: QLD, NSW, WA on their own; VIC, SA (and anything else) as VIC/SA."""
+    return np.where(s.isin(["QLD", "NSW", "WA"]), s, "VIC/SA")
+
+
 def run_fold(e, y, variants):
     tr = _race(e[e.race_date < f"{y}-01-01"].copy())
     te = _race(e[e.race_date.dt.year == y].copy())
@@ -102,10 +110,11 @@ def run_fold(e, y, variants):
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
     out["SP calibrated"] = race_ll(om._softmax(c * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
     weights = {"SP calibration c": c, "blend window": f"{bl.race_date.min():%d %b %Y} to {bl.race_date.max():%d %b %Y}"}
-    # per-state weights (QLD vs VIC/SA), same blend window
-    grp_bl, grp_te = np.where(bl["state"] == "QLD", "QLD", "VIC/SA"), np.where(te["state"] == "QLD", "QLD", "VIC/SA")
+    # per-state weights (QLD, VIC/SA, and NSW / WA when in scope), same blend window
+    grp_bl, grp_te = state_group(bl["state"]), state_group(te["state"])
+    groups = [g_ for g_ in STATE_GROUPS if (grp_bl == g_).any()]
     c_s = {}
-    for g_ in ["QLD", "VIC/SA"]:
+    for g_ in groups:
         b_ = _race(bl[grp_bl == g_].copy())
         c_s[g_] = clogit.fit(b_[["log_p_sp"]].to_numpy(float), b_["race"].to_numpy(), b_["won"].to_numpy())[0]
         weights[f"SP calibration c, {g_}"] = c_s[g_]
@@ -137,14 +146,14 @@ def run_fold(e, y, variants):
                 om._softmax(a * np.log(p_te) + b * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
             weights[f"{v} {name} a"], weights[f"{v} {name} b"] = a, b
             ab = {}
-            for g_ in ["QLD", "VIC/SA"]:
+            for g_ in groups:
                 m_ = grp_bl == g_
                 b_ = _race(bl[m_].copy())
                 ab[g_] = clogit.fit(np.c_[np.log(p_bl[m_]), b_["log_p_sp"].to_numpy(float)], b_["race"].to_numpy(),
                                     b_["won"].to_numpy())
                 weights[f"{v} {name} a, {g_}"], weights[f"{v} {name} b, {g_}"] = ab[g_]
-            a_vec = np.where(grp_te == "QLD", ab["QLD"][0], ab["VIC/SA"][0])
-            b_vec = np.where(grp_te == "QLD", ab["QLD"][1], ab["VIC/SA"][1])
+            a_vec = np.vectorize(lambda g_: ab[g_][0])(grp_te)
+            b_vec = np.vectorize(lambda g_: ab[g_][1])(grp_te)
             out[f"{v}: blend {name} (per state)"] = race_ll(
                 om._softmax(a_vec * np.log(p_te) + b_vec * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
     winners = te[te.won == 1][["race_id", "race_date", "state"]].reset_index(drop=True)
@@ -188,6 +197,8 @@ def main():
     ap.add_argument("--tag", default=None, help="suffix for the report and per-race file (default: variants)")
     ap.add_argument("--rating", action="store_true", help="add the explicit rating model (rating.py) to the baseline")
     ap.add_argument("--logit-only", action="store_true", help="skip the GBM fits (faster)")
+    ap.add_argument("--report-only", action="store_true",
+                    help="rebuild the report from the saved per-race file and weights (no refits)")
     args = ap.parse_args()
     global RATING
     RATING = args.rating
@@ -197,16 +208,30 @@ def main():
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
-    con = duckdb.connect(str(figure.DB), read_only=True)
-    per_race, wts = [], {}
-    for y in FOLDS:
-        r, w = run_fold(om.add_context(om.build(con, f"{y}-01-01")), y, variants)
-        per_race.append(r)
-        wts[y] = w
-        print(y, {k: round(float(r[k].mean()), 4) for k in r.columns if k not in KEY}, flush=True)
-    d = pd.concat(per_race, ignore_index=True)
-    d.to_csv(ROOT / f"reports/blend_per_race{suffix}.csv.gz", index=False, float_format="%.6f")
+    per_race_file, wts_file = ROOT / f"reports/blend_per_race{suffix}.csv.gz", ROOT / f"reports/blend_weights{suffix}.csv"
+    if args.report_only:
+        d = pd.read_csv(per_race_file, parse_dates=["race_date"])
+        wt = pd.read_csv(wts_file, index_col=0)
+    else:
+        con = duckdb.connect(str(figure.DB), read_only=True)
+        per_race, wts = [], {}
+        for y in FOLDS:
+            r, w = run_fold(om.add_context(om.build(con, f"{y}-01-01")), y, variants)
+            per_race.append(r)
+            wts[y] = w
+            print(y, {k: round(float(r[k].mean()), 4) for k in r.columns if k not in KEY}, flush=True)
+        d = pd.concat(per_race, ignore_index=True)
+        d.to_csv(per_race_file, index=False, float_format="%.6f")
+        wt = pd.DataFrame(wts).T
+        wt.to_csv(wts_file)
     cols = [c for c in d.columns if c not in KEY]
+    # races with a missing model output (e.g. no carried weight yet in TopRate's latest results) are dropped,
+    # so every comparison is on the same races
+    bad = d[cols].isna().any(axis=1)
+    dropped = (f"- Dropped {int(bad.sum())} races with a missing model output ({d.loc[bad, 'race_date'].min():%d %b %Y}"
+               f" to {d.loc[bad, 'race_date'].max():%d %b %Y}; inputs such as carried weight not yet in TopRate)"
+               if bad.any() else None)
+    d = d[~bad].reset_index(drop=True)
     rng = np.random.default_rng(0)
 
     by_fold = d.groupby("fold")[cols].mean()
@@ -219,12 +244,13 @@ def main():
     vs_sp = [(f"{v} blend {n} - SP {s}", f"{v}: blend {n}", f"SP {s}")
              for v in variants for n in names[v] for s in ["raw", "calibrated"]]
     L = ["# SP vs model vs blend (same test races)", "",
-         "- Test: VIC/SA/QLD races, one year per fold (2023 to 2026 YTD), every runner with an SP and one winner",
+         "- Test: VIC/SA/QLD races (plus RACING_EXTRA_STATES), one year per fold (2023 to 2026 YTD), every runner with an SP and one winner",
          "- Model: no market inputs (figure + ability + jockey/trainer + race-day projection); logit and LightGBM",
          "- Blend and SP-calibration weights fitted on the last 25% of each fold's training window, using"
          " out-of-sample model predictions from a model fitted on the first 75%; never on test data",
          f"- Variants: {', '.join(variants)} (see module docstring); all share the same fold builds",
-         "- Negative differences = first is better. 95% ranges: 2,000 race bootstrap resamples", "",
+         "- Negative differences = first is better. 95% ranges: 2,000 race bootstrap resamples"] + \
+        ([dropped] if dropped else []) + ["",
          "## Log loss by fold", "", by_fold.T.to_markdown(floatfmt=".4f"), "",
          "## Differences vs SP, pooled", "", diff_table(d, vs_sp, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
          "## By 6-month period: blend minus SP calibrated", "",
@@ -235,7 +261,7 @@ def main():
          [(f"{v} blend {n} (per state) - {v} blend {n} (pooled weights)", f"{v}: blend {n} (per state)", f"{v}: blend {n}")
           for v in variants for n in names[v]] + \
          [("SP calibrated (per state) - SP calibrated (pooled)", "SP calibrated (per state)", "SP calibrated")]
-    L += ["", "## Per-state weights (QLD vs VIC/SA fitted separately on the same blend window)", "",
+    L += ["", "## Per-state weights (QLD, VIC/SA, NSW, WA fitted separately on the same blend window)", "",
           diff_table(d, ps, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
           "## Per-state blend minus per-state calibrated SP, by 6-month period", "",
           half_table(d, ps[:sum(len(names[v]) for v in variants)], rng).to_markdown(index=False, floatfmt=".4f")]
@@ -285,7 +311,6 @@ def main():
     if "fig2" in variants:
         L += ["", "## Figure v2 weights by training cut-off (WPR points per unit)", "",
               pd.DataFrame(om.FIG2_COEF).to_markdown(floatfmt=".3f")]
-    wt = pd.DataFrame(wts).T
     L += ["", "## Weights (fitted on training data only)", "", wt.to_markdown(floatfmt=".3f")]
     out = ROOT / f"reports/blend_eval{suffix}.md"
     out.write_text("\n".join(L) + "\n")

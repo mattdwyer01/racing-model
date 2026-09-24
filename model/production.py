@@ -49,6 +49,18 @@ GROUPS = {
     "age / sex / weight": ["age2", "age3", "age7", "female", "wt_rel_today"],
 }
 MODELS = ROOT / "data/models"
+# Training scope: VIC/SA/QLD + these states (Sep 2026, blend_eval_nswwa_vs_ctl.md: model alone -0.0011, blend
+# -0.0004 on VIC/SA/QLD races). Race cards still cover VIC/SA/QLD only (figure's core_scope).
+TRAIN_EXTRA_STATES = ["NSW", "WA"]
+
+
+def use_training_scope():
+    """Put TRAIN_EXTRA_STATES in scope for this process (an explicit RACING_EXTRA_STATES, even empty, wins).
+    Call before any feature build; research scripts that import this module keep the default scope."""
+    import os
+    if "RACING_EXTRA_STATES" not in os.environ:
+        figure.EXTRA_STATES = list(TRAIN_EXTRA_STATES)
+    return figure.EXTRA_STATES
 
 
 def group_of(c):
@@ -169,6 +181,7 @@ def main():
     ap.add_argument("--folds", nargs="*", default=["2023-01-01", "2024-01-01", "2025-01-01", "2026-01-01"],
                     help="training cut-offs for the stability table")
     a = ap.parse_args()
+    use_training_scope()
     con = duckdb.connect(str(figure.DB), read_only=True)
     tabs = {}
     for te in a.folds:
@@ -184,6 +197,7 @@ def main():
     L = ["# Production logit in WPR points", "",
          f"- Model: conditional logit on {len(COLS)} inputs (figure, ability, jockey/trainer, race-day projection, run"
          " comments); saved to " + str(p.relative_to(ROOT)),
+         f"- Training states: VIC, SA, QLD + {', '.join(figure.EXTRA_STATES) or 'none'}",
          f"- Trained on races before {main_m['train_end']}. One WPR point of ability = {main_m['wpr_unit']:.4f} utility",
          f"- Blend with the market: a = {main_m['a']:.3f} (model), b = {main_m['b']:.3f} (market); calibrated market"
          f" c = {main_m['c']:.3f}; fitted on {main_m['blend_window']}",

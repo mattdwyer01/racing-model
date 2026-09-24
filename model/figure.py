@@ -33,12 +33,14 @@ K = 10                  # prior starts used
 HALF_LIFE_RUNS = 3.0    # decay by starts back
 HALF_LIFE_DAYS = 365.0  # and by age of the run
 # States added to the modelled scope on top of tracks.csv's in_scope (VIC/SA/QLD), e.g. RACING_EXTRA_STATES=NSW,WA.
-# Default none, so every existing evaluation reproduces unchanged.
+# Default none, so every existing evaluation reproduces unchanged. The production model trains with NSW and WA
+# (production.use_training_scope); core_scope keeps the original VIC/SA/QLD flag for race cards.
 EXTRA_STATES = [s.strip().upper() for s in os.environ.get("RACING_EXTRA_STATES", "").split(",") if s.strip()]
 
 SQL = """
 select r.run_id, r.race_id, r.horse_id, r.race_date, ra.distance dist, ra.field_size,
-  ra.state, (coalesce(ra.in_scope, false) or ra.state in ({extra_states})) in_scope, ra.full_coverage,
+  ra.state, (coalesce(ra.in_scope, false) or ra.state in ({extra_states})) in_scope,
+  coalesce(ra.in_scope, false) core_scope, ra.full_coverage,
   r.sp, r.res_won::int won, r.res_finish finish, r.weight_kg,
   r.weight_kg - avg(r.weight_kg) over (partition by r.race_id) wt_rel_today,
   r.days_since_start, r.prep_run, r.career_starts_in_data,
@@ -111,7 +113,7 @@ def history(d, half_life_runs=HALF_LIFE_RUNS, half_life_days=HALF_LIFE_DAYS, k=K
         den += w
         for c in cols:
             num[c] += w * np.nan_to_num(g[c].shift(j).to_numpy())
-    out = d[["run_id", "race_id", "horse_id", "race_date", "dist", "field_size", "state", "in_scope",
+    out = d[["run_id", "race_id", "horse_id", "race_date", "dist", "field_size", "state", "in_scope", "core_scope",
              "full_coverage", "sp", "won", "finish", "weight_kg", "wt_rel_today", "days_since_start",
              "prep_run", "career_starts_in_data"]].copy()
     has = den > 0

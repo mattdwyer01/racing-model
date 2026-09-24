@@ -90,10 +90,19 @@ def _rc_gps_runs(con):
     return out[GX].add_prefix("res_gx_").reset_index()
 
 
+def read_rq_sections(columns=None) -> pd.DataFrame:
+    """rq_gps_sections with numeric tab_no / cum_dist_m (some store copies have them as strings)."""
+    s = pd.read_parquet(SECTIONS, columns=columns)
+    for c in ("tab_no", "cum_dist_m"):
+        if c in s:
+            s[c] = pd.to_numeric(s[c], errors="coerce").astype("Int64")
+    return s
+
+
 def _rq_gps_runs(con):
     if not SECTIONS.exists():
         return None
-    s = pd.read_parquet(SECTIONS)
+    s = read_rq_sections()
     s = s[s["avg_speed_ms"].notna() & (s["avg_speed_ms"] > 5)].copy()
     s["race_code"] = s["race_code"].astype(str)
     key = con.sql("select run_id, src_race race_code, tab_no from gps_runs where source = 'rq'").df()
