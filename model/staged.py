@@ -1,6 +1,8 @@
 """Staged model: ability -> today's conditions -> race shape -> win probability.
 
     python model/staged.py      # walk-forward -> reports/staged.md, reports/staged_per_race.csv.gz
+    python model/staged.py --prod-s3   # + production (with rating mu) + S3, and + S3's parts
+                                       # -> reports/staged_prod_s3.md, reports/staged_prod_s3_per_race.csv.gz
 
 Each stage is one number per horse in WPR points (relative to the field), built by its own sub-models:
   S1 ability     everything known from the horse's history: decayed WPR / figure, best and last figures, trend,
@@ -50,6 +52,8 @@ CTX = ["cx_g", "cx_t", "cx_td", "cx_go", "cx_tr"]
 N_POS, N_WID, N_PACE = 6, 4, 3
 GL_K = 2000.0          # shrinkage of the track ground-cost slope to the global slope (sum of squared metres)
 BOOT = 2000
+PROD_S3 = "--prod-s3" in sys.argv
+S3_PARTS = ["ev_pos_b_early_b", "ev_pos_b_mid_b", "ev_pos_b_late_b", "ev_wid_b_early_b", "ev_ground"]
 
 
 def _race(df):
@@ -191,13 +195,13 @@ def _frame(con):
 
 def run_fold(con, shared, y):
     te_end = f"{y}-01-01"
-    e = om.add_context(om.eval_set(om.build_features(con, te_end, shared=shared, light=True)))
+    e = om.add_context(om.eval_set(om.build_features(con, te_end, shared=shared, light="no_posmap" if PROD_S3 else True)))
     px = om.LAST_PX.pop("full")
     s3 = Stage3()
     st3 = s3.fit_predict(con, px, te_end)
     del px
     e = e.merge(st3, on="run_id", how="left")
-    e["S3"] = e["S3"].fillna(0.0)
+    e[["S3"] + S3_PARTS] = e[["S3"] + S3_PARTS].fillna(0.0)
     e = e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
     tr = _race(e[e.race_date < te_end].copy())
     te = _race(e[e.race_date.dt.year == y].copy())
@@ -218,6 +222,17 @@ def run_fold(con, shared, y):
             out[name] = (om._softmax(production.utility(rows, beta), rows["race"].to_numpy()), beta)
         bp = production._fit_raw(fit_rows, production.COLS)
         out["prod"] = (om._softmax(production.utility(rows, bp), rows["race"].to_numpy()), None)
+        if PROD_S3:       # adopted production (with rating mu), + S3, + S3's parts with their own weights
+            rm = production.fit_mu(fit_rows)
+            fr2, rows2 = production.add_mu(rm, fit_rows), production.add_mu(rm, rows)
+            for df in (fr2, rows2):
+                for ccol in S3_PARTS:
+                    df[ccol] = df[ccol] - df.groupby("race_id")[ccol].transform("mean")
+            base = production.COLS + production.MU
+            for name, cols in [("prod mu", base), ("prod mu + S3", base + ["S3"]), ("prod mu + S3 parts", base + S3_PARTS)]:
+                b_ = production._fit_raw(fr2, cols)
+                out[name] = (om._softmax(production.utility(rows2, b_), rows2["race"].to_numpy()),
+                             b_[[c for c in cols if c == "S3" or c in S3_PARTS]])
         return out, s12
 
     pre, _ = score(inner, bl)
@@ -237,6 +252,9 @@ def run_fold(con, shared, y):
             "ground cost global (WPR / m)": s3.gl_global,
             "stage weights (S1, S2, S3, debut)": tuple(np.round(post["staged"][1].to_numpy(), 4)),
             "blend a/b staged": tuple(np.round(w["staged"], 3)), "blend a/b prod": tuple(np.round(w["prod"], 3))}
+    if PROD_S3:
+        info["S3 weight in prod mu + S3 (per WPR)"] = float(post["prod mu + S3"][1]["S3"])
+        info["S3 part weights"] = tuple(np.round(post["prod mu + S3 parts"][1].to_numpy(), 4))
     winners = te[te.won == 1][["race_id", "race_date", "state"]].reset_index(drop=True)
     return pd.concat([winners, pd.DataFrame(ll)], axis=1).assign(fold=y), info, s12.beta
 
@@ -264,13 +282,18 @@ def main():
         q = pd.read_csv(p2)[["race_id", "prod2-fig2: model logit", "prod2-fig2: blend logit"]]
         d = d.merge(q.rename(columns={"prod2-fig2: model logit": "model prod2 (no fig2)",
                                       "prod2-fig2: blend logit": "blend prod2 (no fig2)"}), on="race_id", how="left")
-    d.to_csv(ROOT / "reports/staged_per_race.csv.gz", index=False, float_format="%.6f")
+    tag = "_prod_s3" if PROD_S3 else ""
+    d.to_csv(ROOT / f"reports/staged{tag}_per_race.csv.gz", index=False, float_format="%.6f")
     rng = np.random.default_rng(0)
     cols = [c for c in d.columns if c not in ("race_id", "race_date", "state", "fold")]
     t = d.groupby("fold")[cols].mean()
     t.loc["pooled"] = d[cols].mean()
     pairs = [("model staged", "model prod"), ("blend staged", "blend prod"), ("blend staged", "SP calibrated"),
              ("model S1 + S2", "model S1"), ("model staged", "model S1 + S2"), ("blend staged", "blend S1 + S2")]
+    if PROD_S3:
+        pairs = [("model prod mu + S3", "model prod mu"), ("blend prod mu + S3", "blend prod mu"),
+                 ("model prod mu + S3 parts", "model prod mu"), ("blend prod mu + S3 parts", "blend prod mu"),
+                 ("blend prod mu + S3", "SP calibrated")] + pairs
     if "blend prod2 (no fig2)" in d:
         pairs += [("model staged", "model prod2 (no fig2)"), ("blend staged", "blend prod2 (no fig2)")]
     rows = []
@@ -294,7 +317,7 @@ def main():
          "## Stage fits and accuracy by fold", "", pd.DataFrame(infos).to_markdown(floatfmt=".4f"), "",
          "## S1 / S2 weights: WPR points per unit of each input (fit on all training rows)", "",
          B.sort_values(["stage", "input"]).to_markdown(floatfmt=".3f")]
-    (ROOT / "reports/staged.md").write_text("\n".join(L) + "\n")
+    (ROOT / f"reports/staged{tag}.md").write_text("\n".join(L) + "\n")
     print("\n".join(L))
 
 

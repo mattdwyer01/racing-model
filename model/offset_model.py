@@ -68,7 +68,7 @@ def build_features(con, train_end, shared=None, light=False):
     h = shared["h"] if shared else figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
     extra = [c for c in ability.ALL if c not in ability.BASE and c != "wt_rel_today"] + ["wet"]
-    if not light:
+    if light is not True:           # light="no_posmap" keeps figure v2 (rating model inputs), skips the map
         coef2 = ability.fit_coef_next(d, train_end)
         a2 = ability.features(d, coef2)[["run_id"] + ability.FIG_DEPENDENT]
         a = a.merge(a2.rename(columns={c: c + "_v2" for c in ability.FIG_DEPENDENT}), on="run_id")
