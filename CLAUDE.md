@@ -103,8 +103,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       (2023-24) then 0.08, WA -0.32 (2023) then -0.01 to 0.04; pooled 0.09-0.15. Per-state weights vs pooled
       +0.0003 n.s. (QLD +0.0009, NSW +0.0006 worse): keep pooled weights, but pooled a hurts WA (per-state a ~0
       brings WA to SP level). Rating mu still helps model alone in NSW (-0.0034) and WA (-0.0051).
-    - Verdict: training on all 5 states meets the adoption rule (production.py not switched yet: set
-      RACING_EXTRA_STATES there); bet QLD only; NSW / WA not worth betting on this model.
+    - Verdict: training on all 5 states ADOPTED (`production.TRAIN_EXTRA_STATES`, applied by
+      `production.use_training_scope()` in production.py / race_card / dashboard; an explicit RACING_EXTRA_STATES
+      overrides, research scripts keep VIC/SA/QLD). Race cards stay VIC/SA/QLD (`core_scope`). Bet QLD only;
+      NSW / WA not worth betting on this model.
   - Gear / wpr_nett (`gear_wpr_test.md`, 26 Apr to 23 Sep 2026, 5 states, half-window swap offset logits):
     - wpr_nett on top of production: model alone -0.0073 (95% -0.0107 to -0.0042; all states negative), blend
       +0.0000 (-0.0003 to +0.0003). Leakage line passes: wpr_nett alone is +0.2268 behind SP (+0.2089 to
