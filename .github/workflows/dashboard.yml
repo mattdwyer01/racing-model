@@ -1,7 +1,7 @@
 name: Racing Model -> TopRate dashboard (daily)
 
 # Pulls the latest TopRate results, runners and TAB price snapshots from the public TopRate repo, rebuilds the
-# database, scores today's and the next two days' VIC/SA/QLD races with the production model (projections are
+# database, scores today's and the next two days' races (every state) with the production model (projections are
 # archived the day they are made, so past races keep their pre-race projection), and commits racing_model.json
 # into the TopRate repo, where the dashboard shows it as the Racing Model panel (blend and edge recomputed live
 # from TopRate's own fixed-price refresh).

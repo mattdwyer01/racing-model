@@ -49,9 +49,11 @@ GROUPS = {
     "age / sex / weight": ["age2", "age3", "age7", "female", "wt_rel_today"],
 }
 MODELS = ROOT / "data/models"
-# Training scope: VIC/SA/QLD + these states (Sep 2026, blend_eval_nswwa_vs_ctl.md: model alone -0.0011, blend
-# -0.0004 on VIC/SA/QLD races). Race cards still cover VIC/SA/QLD only (figure's core_scope).
-TRAIN_EXTRA_STATES = ["NSW", "WA"]
+# Scope: VIC/SA/QLD + these states, for training and race cards. NSW/WA in training tested (Sep 2026,
+# blend_eval_nswwa_vs_ctl.md: VIC/SA/QLD model alone -0.0011, blend -0.0004; no edge within NSW / WA). TAS / NT /
+# ACT added untested (Sep 2026, cards for every state; ~6% more rows). Bet QLD only on current evidence.
+TRAIN_EXTRA_STATES = ["NSW", "WA", "TAS", "NT", "ACT"]
+CARD_ALL_STATES = True      # race cards / dashboard for every state in scope (False: VIC/SA/QLD only)
 
 
 def use_training_scope():

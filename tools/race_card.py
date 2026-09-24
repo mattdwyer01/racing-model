@@ -1,7 +1,7 @@
 """Race card: speed map, projected rating (ability + bonuses / penalties in WPR points) and prices vs the market.
 
     python tools/race_card.py --date 2026-08-15 --track "Rockhampton"
-    python tools/race_card.py --date 2026-08-15                 # every VIC/SA/QLD meeting that day
+    python tools/race_card.py --date 2026-08-15                 # every meeting that day (all states in scope)
 
 Trains the production logit (model/production.py) on races before --date only, then scores that day's races.
 Works for races without results (upcoming): features never use the race's own result.
@@ -79,16 +79,17 @@ def speed_map(rows, date):
 
 
 def score(con, train_end, dates, track=None):
-    """Card rows for every VIC/SA/QLD race on `dates` with the production model trained on races before
+    """Card rows for every in-scope race on `dates` (all states, production.CARD_ALL_STATES) with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
     om.EXTRA_PROJ, om.KEEP_SIM = LITE or True, True
-    production.use_training_scope()      # trains on VIC/SA/QLD + NSW/WA; cards stay VIC/SA/QLD (core_scope)
+    production.use_training_scope()      # VIC/SA/QLD + production.TRAIN_EXTRA_STATES (all states)
     raw = om.build_features(con, train_end, light="no_posmap", lean=True)
     m, _ = production.train(con, train_end, e=om.add_context(eval_set(raw)))
     info = con.sql(INFO_SQL.format(d=", ".join(f"date '{x}'" for x in dates))).df()
     if track:
         info = info[info["track"].str.contains(track, case=False)]
-    rows = raw[raw["run_id"].isin(info["run_id"]) & raw["core_scope"]]
+    card_scope = raw["in_scope"] if production.CARD_ALL_STATES else raw["core_scope"]
+    rows = raw[raw["run_id"].isin(info["run_id"]) & card_scope]
     if rows.empty:
         return pd.DataFrame(), m
     rows = rows.merge(info[["run_id", "fixed_win_price", "open_price"]], on="run_id", how="left")
@@ -125,7 +126,7 @@ def main():
     con = duckdb.connect(str(figure.DB), read_only=True)
     c, m = score(con, a.date, [a.date], a.track)
     if c.empty:
-        sys.exit("no VIC/SA/QLD races found for that date / track")
+        sys.exit("no in-scope races found for that date / track")
     L = [f"# Race card {a.date}{' ' + a.track if a.track else ''}", "",
          f"- Model trained on races before {a.date} (blend a = {m['a']:.3f}, b = {m['b']:.3f}). Contributions are WPR"
          " points vs the field average; projected rating = field's average rating + rating vs field. Model and blend"
