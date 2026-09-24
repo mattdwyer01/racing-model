@@ -72,6 +72,7 @@ def _clean(v):
 def _archive_rows(c, m, scored_on):
     if c.empty:
         return pd.DataFrame(columns=KEEP)
+    arch["race_date"] = pd.to_datetime(arch["race_date"])   # an empty archive reads as object dtype
     a = c[[k for k in KEEP if k in c]].copy()
     a["scored_on"], a["train_end"] = str(scored_on), m["train_end"]
     a["blend_a"], a["blend_b"], a["cal_c"] = m["a"], m["b"], m["c"]
