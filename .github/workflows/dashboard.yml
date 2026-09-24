@@ -7,6 +7,7 @@ name: Racing Model -> TopRate dashboard (daily)
 # from TopRate's own fixed-price refresh).
 #
 # Needs: secret TOPRATE_PUSH_TOKEN (fine-grained token, Contents read/write on mattdwyer01/toprate).
+# Data store: variable DATA_REPO + secret DATA_TOKEN (private data repo); defaults to this repo's release.
 # The build needs ~10 GB of memory: set the repo variable DASHBOARD_RUNNER to `vultr-au` to run on the Vultr box.
 
 on:
@@ -28,6 +29,8 @@ jobs:
     timeout-minutes: 150
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATA_REPO: ${{ vars.DATA_REPO || github.repository }}
+      DATA_TOKEN: ${{ secrets.DATA_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 

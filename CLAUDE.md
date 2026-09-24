@@ -36,7 +36,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   fixed prices, place / exotics, selection). Test additions together (they overlap) with leave-one-out variants.
 
 ## Automation
-- Data store = assets on the GitHub release tagged `data` (`pipeline/store.py`), not git.
+- Data store = assets on the GitHub release tagged `data` (`pipeline/store.py`), not git. Store repo = variable
+  `DATA_REPO` (private, e.g. `mattdwyer01/racing-data`) with secret `DATA_TOKEN`; falls back to this repo.
+  `python pipeline/store.py migrate mattdwyer01/racing-model` copies the old store across.
 - `gps_daily.yml` (06:00 AEST), `gps_backfill.yml` (manual), `tab_price_archive.yml` (Vultr runner).
 - My workspace and GitHub-hosted runners may be blocked by TAB (confirmed) and possibly RQ / racing.com;
   set repo variable `SCRAPER_RUNNER=vultr-au` to move scraping to the Vultr self-hosted runner.

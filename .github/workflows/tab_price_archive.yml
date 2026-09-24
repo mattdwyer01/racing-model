@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 20
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATA_REPO: ${{ vars.DATA_REPO || github.repository }}
+      DATA_TOKEN: ${{ secrets.DATA_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m pip install --quiet requests

@@ -90,6 +90,8 @@ jobs:
     concurrency: { group: gps-data, cancel-in-progress: false }
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATA_REPO: ${{ vars.DATA_REPO || github.repository }}
+      DATA_TOKEN: ${{ secrets.DATA_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
