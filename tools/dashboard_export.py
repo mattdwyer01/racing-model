@@ -51,6 +51,15 @@ from races ra left join race_times t using (race_id) where ra.race_date in ({d})
 """
 
 
+def _started_races(con):
+    """race_ids whose start time has passed (race_times, from the TopRate runners file)."""
+    now = dt.datetime.now(dt.timezone.utc).timestamp()
+    try:
+        return set(con.sql(f"select race_id from race_times where epoch(start_utc) <= {now}").df()["race_id"])
+    except duckdb.Error:
+        return set()
+
+
 def _missing_days(con, arch, days):
     """Recent days with a state that raced but has nothing archived (a new day, or a state added to scope)."""
     if not days:
@@ -244,8 +253,11 @@ def main():
         cb, mb = race_card.score(con, str(min(missing)), [str(d) for d in missing])
         new = pd.concat([new, _archive_rows(cb, mb, min(missing))], ignore_index=True)
     new["race_date"] = pd.to_datetime(new["race_date"])
-    # keep the earliest projection for past days; today's and future days are replaced by the latest run
-    arch = arch[~arch["race_date"].dt.date.isin(upcoming)]
+    # keep the earliest projection for past days and for races that have already started (a later run must not
+    # overwrite a pre-race projection with one made after the jump); races still to run are replaced by this run
+    started = _started_races(con)
+    replace = arch["race_date"].dt.date.isin(upcoming) & ~arch["race_id"].astype("int64").isin(started)
+    arch = arch[~replace]
     arch = pd.concat([arch, new], ignore_index=True).drop_duplicates(["run_id"], keep="first")
     ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
     arch.to_csv(ARCHIVE, index=False, compression="gzip")

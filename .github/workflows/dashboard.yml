@@ -13,7 +13,8 @@ name: Racing Model -> TopRate dashboard (daily)
 on:
   schedule:
     - cron: "45 19 * * *"     # 05:45 AEST / 06:45 AEDT, after the GPS job
-    - cron: "15 1 * * *"      # 11:15 AEST: refresh fields and scratchings before most races
+    - cron: "15 0-7 * * *"    # hourly 10:15 to 17:15 AEST: scratchings, jockey changes, TAB weights, going
+    # (GitHub starts scheduled runs late at busy times; concurrency below queues them, never overlapping)
   workflow_dispatch:
 
 permissions:
