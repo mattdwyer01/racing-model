@@ -77,6 +77,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Race simulation (`race_sim.md`): no gain (blend +0.0002). Finishing-order model (`order_model.md`):
     discounted Plackett-Luce (2nd 0.75-0.78, 3rd 0.59-0.64) beats Harville by a wide margin; blend vs SP in QLD
     exacta -0.0052, trifecta -0.0079. Betting test at SP (`betting_test.md`): nothing significant.
+  - Disagreement on prod2 (`disagreement_prod2.md`): position map (top 5% up A/E 1.09) and past ground loss
+    (top 10% up A/E 1.07, both states) still beat the market; figure v2 harmful both ways. As blend weights
+    (`signal_blend.md`) they add 0.0000 (unstable weights): selection filters only, test at bet-time prices.
+  - Staged model (`staged.md`): ability from a WPR regression is far weaker (+0.035 model alone); the race-shape
+    stage S3 adds -0.0071 inside it, but on top of production (`staged_prod_s3.md`) +0.0002 n.s. Not adopted.
+    TopRate 2023 res_shape_mid has absurd outliers (sd 9.8 vs 2.5): clip |x| > 12 (done in staged.py only).
   - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).
   - Caveat: history uses each past run's CURRENT WPR (TopRate revises Preliminary to Final); on race day some
     were still preliminary. Mild look-ahead the leakage test cannot catch; needs dated WPR snapshots.
