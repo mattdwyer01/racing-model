@@ -8,7 +8,7 @@ name: Racing Model -> TopRate dashboard (daily)
 #
 # Needs: secret TOPRATE_PUSH_TOKEN (fine-grained token, Contents read/write on mattdwyer01/toprate).
 # Data store: variable DATA_REPO + secret DATA_TOKEN (private data repo); defaults to this repo's release.
-# The build needs ~10 GB of memory: set the repo variable DASHBOARD_RUNNER to `vultr-au` to run on the Vultr box.
+# Memory: ~9.3 GB peak (5-state training, lite speed map); fits GitHub's 16 GB runners for public repos.
 
 on:
   schedule:
@@ -43,6 +43,10 @@ jobs:
 
       - name: Pull TopRate results, runners and prices
         run: python pipeline/pull_toprate.py
+
+      - name: Racing Australia fields (carried weights and barriers; TopRate no longer has weights)
+        run: python ingest/ra_fields.py
+        continue-on-error: true      # a failed fetch only means missing weights are filled with the race mean
 
       - name: Pull the store and build the database
         run: python pipeline/bootstrap.py

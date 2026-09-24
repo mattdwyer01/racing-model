@@ -160,6 +160,24 @@ from live_runners where run_id is not null;
 # the runners file (finish, margin, WPR, SP, comments; no in-running positions or sectionals). Mapped to the results-file
 # columns (class names to TopRate codes; track = the venue's usual track, or its synthetic track when the going
 # is Synthetic; age / sex / breeding from the horse's latest results row). Scratched runners are left out.
+RA = ROOT / "data/interim/ra_fields.parquet"   # Racing Australia fields (ingest/ra_fields.py)
+# TopRate stopped carrying weights (results from 12 Sep 2026; the runners file never had them): fill missing
+# carried weight, claim and barrier from Racing Australia's fields by date + horse name (same key as
+# ra_fields.horse_key). Only fills gaps; TopRate's own values win where present.
+RA_SQL = f"""
+create or replace table ra_fields as
+select date::date ra_date, horse_key, arg_max(carried_kg, fetched_at) carried_kg,
+       arg_max(claim_kg, fetched_at) claim_kg, arg_max(nullif(barrier, 0), fetched_at) barrier
+from read_parquet('{RA}') where carried_kg is not null group by 1, 2;
+
+update tr_raw set weightCarried = coalesce(tr_raw.weightCarried, ra.carried_kg),
+                  weight_adjustment = coalesce(tr_raw.weight_adjustment, nullif(ra.claim_kg, 0)),
+                  barrier = coalesce(tr_raw.barrier, ra.barrier)
+from ra_fields ra
+where tr_raw.weightCarried is null and ra.ra_date = tr_raw.date::date
+  and ra.horse_key = regexp_replace(regexp_replace(lower(tr_raw.horse), '\\s*\\([a-z]{{2,3}}\\)\\s*$', ''), '[^a-z]', '', 'g');
+"""
+
 UPCOMING_SQL = """
 create or replace temp table _venue_track as
 select venue, arg_max(track, n + case when track = venue then 1e9 else 0 end) track, arg_max(track, case when going in ('Synthetic','Sand','Dirt') then n end) synth_track
@@ -209,6 +227,8 @@ def build(db=DB):
     if LIVE.exists():
         con.execute(LIVE_SQL)
         con.execute(UPCOMING_SQL)
+    if RA.exists():
+        con.execute(RA_SQL)
     con.execute(TABLE_SQL)
     gps_link.build(con)   # table gps_runs, when GPS parquets are in data/interim
     return con

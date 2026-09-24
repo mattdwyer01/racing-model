@@ -18,7 +18,7 @@ from pipeline import store  # noqa: E402
 
 TOPRATE = re.compile(r"race_results_\d{4}\.csv\.gz")
 LIVE = "toprate_runners.csv"
-GPS = re.compile(r"(rq|rc)_gps_(runs|sections)\.parquet|tab_price_history_from_git\.csv\.gz")
+GPS = re.compile(r"(rq|rc)_gps_(runs|sections)\.parquet|tab_price_history_from_git\.csv\.gz|ra_fields\.parquet")
 
 
 def pull(force=False):
