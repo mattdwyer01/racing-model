@@ -80,8 +80,12 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
     fr = shared["fr"] if shared else projection.frame(con, h)
     if lean:
         assert light and not shared and not PX_KEEP, "lean needs light and no shared / PX_KEEP"
-        projection.project(fr, train_end, inplace=True)
+        fr, _, _ = projection.project(fr, train_end, inplace=True)
         proj = fr[["run_id"] + PROJ].copy()
+        # position value map (a selection signal shown on the dashboard; not a production input), on a slim copy
+        proj = proj.merge(position_map.features(con, fr[position_map.NEEDS].copy(), train_end), on="run_id",
+                          how="left")
+        gc.collect()
         holder = [fr]
         del fr
         px4 = _extra_proj(con, holder, train_end) if EXTRA_PROJ else None

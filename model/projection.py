@@ -376,7 +376,8 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     r["proj_shape"] = _fit(r.loc[ok, PACE_X], r.loc[ok, "y_shape"]).predict(r[PACE_X].to_numpy(float))
     ok = rm & r["y_lead_early"].notna()
     r["proj_lead_early"] = _fit(r.loc[ok, PACE_X], r.loc[ok, "y_lead_early"]).predict(r[PACE_X].to_numpy(float))
-    x = x.join(r[["proj_shape", "proj_lead_early"]], on="race_id")
+    for c in ["proj_shape", "proj_lead_early"]:          # map, not join: keeps x the same object (inplace)
+        x[c] = x["race_id"].map(r[c])
     x["proj_pace"] = x["proj_shape"] * (1 - x["proj_settle"])
 
     mg = tr & x["y_gl"].notna()

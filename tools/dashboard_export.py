@@ -36,7 +36,8 @@ GROUPS = [g for g in race_card.SHOW]
 KEEP = ["race_id", "run_id", "race_date", "horse", "barrier", "jockey", "trainer", "weight_kg", "track",
         "distance", "race_class", "going", "race_no", "settle", "P(leads)", "pace vs distance avg", "P(slow)",
         "P(even)", "P(fast)", "proj_gl_v4", "race-day adj", "projected rating", "rating vs field", "model %",
-        "model $", "blend %", "blend $", "fixed_win_price", "open_price", "edge vs fixed"] + GROUPS
+        "model $", "blend %", "blend $", "fixed_win_price", "open_price", "edge vs fixed", "pos value",
+        "pos flag"] + GROUPS
 
 RESULT_SQL = """
 select r.run_id, r.res_finish finish, r.res_margin_l margin, r.res_wpr wpr, r.sp, r.res_pos800 pos800,
@@ -127,14 +128,16 @@ def write_toprate(dest, rows, m, track):
             "r": f(x.get("projected rating")), "v": f(x.get("rating vs field")),
             "p": f(x["model %"] / 100 if pd.notna(x.get("model %")) else None), "s": f(x.get("settle")),
             "l": f(x.get("P(leads)")), "g": f(x.get("proj_gl_v4")), "d": f(x.get("race-day adj")),
-            "ab": f(x.get("ability")), "jt": f(x.get("jockey / trainer"))}
+            "ab": f(x.get("ability")), "jt": f(x.get("jockey / trainer")), "pv": f(x.get("pos value")),
+            "pf": 1 if str(x.get("pos flag")) in ("True", "1", "1.0") else 0}
         rid = str(int(x["race_id"]))
         if rid not in races:
             pace = [f(x.get("P(slow)")), f(x.get("P(even)")), f(x.get("P(fast)"))]
             races[rid] = {"pace": pace if None not in pace else None, "pv": f(x.get("pace vs distance avg")),
                           "on": str(x.get("scored_on"))[:10]}
     payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": m["train_end"],
-               "a": float(m["a"]), "b": float(m["b"]), "races": races, "runners": runners,
+               "a": float(m["a"]), "b": float(m["b"]), "posFlagThreshold": m.get("pos_flag_thr"),
+               "races": races, "runners": runners,
                "tracking": track.get("total")}
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "racing_model.json").write_text(json.dumps(payload, separators=(",", ":")))

@@ -28,6 +28,9 @@ PACE = ["slow", "even", "fast"]
 LAMBDA = 30.0
 HALF_LIFE_DAYS = 730
 FEATS = ["pv_adj", "pw_adj"]
+# columns features() reads from the projection frame (pass px[NEEDS] to keep memory down)
+NEEDS = list(dict.fromkeys(["run_id", "race_id", "race_date", "y_shape", "proj_shape", "dist", "going_num", "rail_m", "track",
+                            "wpr", "h_wpr", "h_none"] + projection.SETTLE_X + projection.GL_X))
 CLF = dict(objective="multiclass", num_leaves=31, learning_rate=0.05, min_data_in_leaf=200, feature_fraction=0.8,
            bagging_fraction=0.8, bagging_freq=1, verbose=-1, num_threads=4, seed=1, deterministic=True,
            force_row_wise=True)

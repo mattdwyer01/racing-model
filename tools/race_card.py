@@ -39,6 +39,7 @@ where r.race_date in ({d}) and not r.is_trial_or_jumpout
 SHOW = ["ability", "form shape", "distance / going", "prep", "race-day projection", "track bias",
         "jockey / trainer", "comments", "ground loss (past runs)", "position value", "age / sex / weight"]
 PACE_NAMES = ["slow", "even", "fast"]
+POS_FEATS = ["pv_adj", "pw_adj"]
 
 
 def prep(rows):
@@ -88,7 +89,18 @@ def score(con, train_end, dates, track=None):
     rows = rows.merge(info[["run_id", "fixed_win_price", "open_price"]], on="run_id", how="left")
     pr = prep(rows)
     c = production.card(m, pr, market="log_p_mkt").merge(info, on=["run_id", "race_id"])
-    c = c.merge(pr[["run_id", "race_date", "h_wpr", "h_none", "proj_gl_v4"]], on="run_id", how="left")
+    c = c.merge(pr[["run_id", "race_date", "h_wpr", "h_none", "proj_gl_v4"] + [f for f in POS_FEATS if f in pr]],
+                on="run_id", how="left")
+    # position value (position map: expected value of the projected position and width, WPR points vs the race)
+    # and its flag: top 10% of runners over the last two years of training races (the disagreement test group
+    # the market underrates)
+    if all(f in raw for f in POS_FEATS):
+        pv_all = raw[POS_FEATS].fillna(0).sum(1)
+        recent = raw["in_scope"] & (raw["race_date"] < train_end) & \
+            (raw["race_date"] >= pd.Timestamp(train_end) - pd.Timedelta(days=730))
+        m["pos_flag_thr"] = float(pv_all[recent].quantile(0.9))
+        c["pos value"] = c[POS_FEATS].fillna(0).sum(1)
+        c["pos flag"] = c["pos value"] >= m["pos_flag_thr"]
     c = c.merge(speed_map(rows, train_end), on="run_id", how="left")
     # projected rating: field's average decayed WPR (horses with history) + rating vs field
     lvl = c["h_wpr"].where(c["h_none"] == 0).groupby(c["race_id"]).transform("mean")
