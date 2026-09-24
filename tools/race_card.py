@@ -40,6 +40,10 @@ SHOW = ["ability", "form shape", "distance / going", "prep", "race-day projectio
         "jockey / trainer", "comments", "ground loss (past runs)", "position value", "age / sex / weight"]
 PACE_NAMES = ["slow", "even", "fast"]
 POS_FEATS = ["pv_adj", "pw_adj"]
+# "lite": speed map from production's v3 settle projection (low memory, for GitHub's free runner); set
+# RACING_SPEEDMAP=v4 for the v4 settle model (needs ~10 GB)
+import os  # noqa: E402
+LITE = "lite" if os.environ.get("RACING_SPEEDMAP", "lite") != "v4" else False
 
 
 def prep(rows):
@@ -77,7 +81,7 @@ def speed_map(rows, date):
 def score(con, train_end, dates, track=None):
     """Card rows for every VIC/SA/QLD race on `dates` with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
-    om.EXTRA_PROJ, om.KEEP_SIM = True, True
+    om.EXTRA_PROJ, om.KEEP_SIM = LITE or True, True
     raw = om.build_features(con, train_end, light="no_posmap", lean=True)
     m, _ = production.train(con, train_end, e=om.add_context(eval_set(raw)))
     info = con.sql(INFO_SQL.format(d=", ".join(f"date '{x}'" for x in dates))).df()

@@ -47,7 +47,8 @@ GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
 MAX_ROUNDS, EARLY = 1500, 100
 PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
 SETTLE_V4 = False  # with PX_KEEP: also keep the v4 settle projection (projection_v4.settle) as proj_settle_v4
-EXTRA_PROJ = False  # also add PROJ_V4 (projection outputs with v4 settle) and GPS_PACE (projected GPS race pace)
+EXTRA_PROJ = False  # also add PROJ_V4 (projection outputs with v4 settle) and GPS_PACE (projected GPS race pace);
+                    # "lite" (lean builds only): same columns from the v3 projection, no second pass (low memory)
 KEEP_SIM = False    # with EXTRA_PROJ: keep the race simulation's inputs in LAST_PX (tools/race_card.py speed map)
 PROJ_V4 = [c + "_v4" for c in projection.OUT]
 GPS_PACE = ["proj_gps_pace", "proj_gps_pace_x"]
@@ -80,15 +81,19 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
     fr = shared["fr"] if shared else projection.frame(con, h)
     if lean:
         assert light and not shared and not PX_KEEP, "lean needs light and no shared / PX_KEEP"
-        fr, _, _ = projection.project(fr, train_end, inplace=True)
+        fr, r3, _ = projection.project(fr, train_end, inplace=True)
         proj = fr[["run_id"] + PROJ].copy()
         # position value map (a selection signal shown on the dashboard; not a production input), on a slim copy
         proj = proj.merge(position_map.features(con, fr[position_map.NEEDS].copy(), train_end), on="run_id",
                           how="left")
         gc.collect()
-        holder = [fr]
-        del fr
-        px4 = _extra_proj(con, holder, train_end) if EXTRA_PROJ else None
+        if EXTRA_PROJ == "lite":     # speed map from production's own (v3) settle: no second projection pass
+            px4 = _extra_proj_lite(con, fr, r3, train_end)
+            del fr, r3
+        else:
+            holder = [fr]
+            del fr
+            px4 = _extra_proj(con, holder, train_end) if EXTRA_PROJ else None
         gc.collect()
         xh = extra_history.features(con, d, train_end)
         del d
@@ -131,6 +136,24 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
     e[JT] = e[JT].fillna(0.0)
     # fixed row order, so adding columns or merges never changes what the GBM's row sampling sees
     return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
+
+
+def _extra_proj_lite(con, x, r, train_end):
+    """Low-memory stand-in for _extra_proj (daily dashboard job): the same output columns, built from the v3
+    projection already in x (settle, ground loss) and its race frame r (GPS pace model), with no v4 pass."""
+    from model import projection_gps
+    r = r.join(projection_gps.gps_pace(con).rename("gps_pace"))
+    m = (r["race_date"] < pd.Timestamp(train_end)) & r["gps_pace"].notna()
+    r["proj_gps_pace"] = projection._fit(r.loc[m, projection.PACE_X], r.loc[m, "gps_pace"]).predict(
+        r[projection.PACE_X].to_numpy(float))
+    if KEEP_SIM:
+        from model import race_sim
+        LAST_PX["sim_px"] = x[race_sim.PX].assign(sim_settle=x["proj_settle"])
+        LAST_PX["sim_rr"] = r.copy()
+    out = x[["run_id", "race_id"] + projection.OUT].rename(columns={c: c + "_v4" for c in projection.OUT})
+    out["proj_gps_pace"] = out["race_id"].map(r["proj_gps_pace"])
+    out["proj_gps_pace_x"] = out["proj_gps_pace"] * (1 - out["proj_settle_v4"])
+    return out.drop(columns="race_id")
 
 
 def _extra_proj(con, fr, train_end):
