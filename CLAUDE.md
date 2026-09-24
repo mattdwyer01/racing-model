@@ -85,6 +85,32 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Staged model (`staged.md`): ability from a WPR regression is far weaker (+0.035 model alone); the race-shape
     stage S3 adds -0.0071 inside it, but on top of production (`staged_prod_s3.md`) +0.0002 n.s. Not adopted.
     TopRate 2023 res_shape_mid has absurd outliers (sd 9.8 vs 2.5): clip |x| > 12 (done in staged.py only).
+  - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
+    `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
+    - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
+      VIC/SA -0.0002 n.s.), logit blend -0.0004 (-0.0006 to -0.0002; QLD 0.0000, VIC/SA -0.0006). Half the blend
+      gain is SP calibration fitted on more races (SP calibrated -0.0003). Better in 2023-2025, model alone
+      +0.0010 in 2026.
+    - Within NSW (20,018 races) / WA (7,795): SP calibrated 1.7467 / 1.7836, prodmu model alone 1.8962 / 1.9371,
+      logit blend 1.7465 / 1.7860. Blend minus SP calibrated: NSW -0.0002 (-0.0011 to +0.0006), WA +0.0024
+      (+0.0011 to +0.0036, worse every fold). No edge in either; QLD edge unchanged (-0.0034).
+    - Fitted weight on the model a (prodmu, per state): QLD 0.18-0.27, VIC/SA 0.06-0.09, NSW 0.24 / 0.22
+      (2023-24) then 0.08, WA -0.32 (2023) then -0.01 to 0.04; pooled 0.09-0.15. Per-state weights vs pooled
+      +0.0003 n.s. (QLD +0.0009, NSW +0.0006 worse): keep pooled weights, but pooled a hurts WA (per-state a ~0
+      brings WA to SP level). Rating mu still helps model alone in NSW (-0.0034) and WA (-0.0051).
+    - Verdict: training on all 5 states meets the adoption rule (production.py not switched yet: set
+      RACING_EXTRA_STATES there); bet QLD only; NSW / WA not worth betting on this model.
+  - Gear / wpr_nett (`gear_wpr_test.md`, 26 Apr to 23 Sep 2026, 5 states, half-window swap offset logits):
+    - wpr_nett on top of production: model alone -0.0073 (95% -0.0107 to -0.0042; all states negative), blend
+      +0.0000 (-0.0003 to +0.0003). Leakage line passes: wpr_nett alone is +0.2268 behind SP (+0.2089 to
+      +0.2434) and +0.0895 behind production. It is 89% explained by pre-race WPR stats; adding the race's own
+      WPR lifts that only to 89.5%. Meets the adoption rule, but exists only in the runners file (Apr 2026 on),
+      so it can only be an offset layer on production, not a walk-forward input. Not adopted yet.
+    - Gear: `gear_changes` is only filled from 1 Sep 2026 (992 races). There + gear is +0.0042 (-0.0034 to
+      +0.0123) model alone, +0.0053 blend: no evidence, overfits. Retest after a few months of gear data.
+  - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
+    `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
+    the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
   - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).
   - Caveat: history uses each past run's CURRENT WPR (TopRate revises Preliminary to Final); on race day some
     were still preliminary. Mild look-ahead the leakage test cannot catch; needs dated WPR snapshots.

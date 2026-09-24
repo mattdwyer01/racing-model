@@ -29,6 +29,9 @@ def main():
     args = ap.parse_args()
     a, b = load(args.a), load(args.b)
     m = a.merge(b, on="race_id", suffixes=(" A", " B"))
+    used = [f"{c} {s}" for c in args.cols + ["SP calibrated"] for s in ("A", "B")]
+    n_all = len(m)
+    m = m.dropna(subset=used).reset_index(drop=True)          # races with a missing model output in either run
     m["group"] = np.where(m["state A"] == "QLD", "QLD", "VIC/SA")
     rng = np.random.default_rng(0)
     rows = []
@@ -45,7 +48,8 @@ def main():
     fold = m.groupby("fold A").apply(lambda g: pd.Series({c: (g[f"{c} A"] - g[f"{c} B"]).mean() for c in args.cols}),
                                         include_groups=False)
     L = [f"# {args.a} vs {args.b}: same races, paired", "",
-         f"- Races in both runs: {len(m):,} (of {len(a):,} in {args.a}, {len(b):,} in {args.b})",
+         f"- Races in both runs: {len(m):,} (of {len(a):,} in {args.a}, {len(b):,} in {args.b});"
+         f" {n_all - len(m)} shared races dropped for a missing model output",
          "- Negative = first run better. 95% ranges: 2,000 race bootstrap resamples", "",
          pd.DataFrame(rows).to_markdown(index=False, floatfmt=".4f"), "", "## By fold (mean difference)", "",
          fold.to_markdown(floatfmt=".4f")]
