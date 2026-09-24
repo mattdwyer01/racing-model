@@ -55,6 +55,10 @@ def _rq():
         return None
     r = pd.read_parquet(p)
     s = pd.read_parquet(INTERIM / "rq_gps_sections.parquet")
+    for d in (r, s):                   # the daily parse can store numbers as strings
+        for c in ["tab_no", "cum_dist_m", "real_dist_m", "rank", "rail_m", "finish", "race_no"]:
+            if c in d:
+                d[c] = pd.to_numeric(d[c], errors="coerce")
     r = r[r["result_state"] == "Finished"].copy()
     r["race_key"] = "rq" + r["race_code"].astype(str)
     agg = s.groupby(["race_code", "tab_no"]).agg(rail_m=("rail_m", "mean"), last_cum=("cum_dist_m", "max"))
