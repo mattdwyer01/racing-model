@@ -67,6 +67,7 @@ jobs:
         chunk: ${{ fromJSON(needs.plan.outputs.years) }}
     env:
       RACINGCOM_API_KEY: ${{ secrets.RACINGCOM_API_KEY }}
+      RACINGCOM_CAL_API_KEY: ${{ secrets.RACINGCOM_CAL_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
