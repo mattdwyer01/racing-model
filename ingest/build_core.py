@@ -6,7 +6,9 @@ Tables written to data/db/racing.duckdb:
     tr_raw   raw union of every yearly file (untouched)
     tracks   track -> venue, state, location class, surface, in_scope (from ingest/tracks.csv)
     races    one row per race (races and trials)
-    runs     one row per runner per race, with pre-race history fields
+    runs     one row per runner per race, with pre-race history fields; upcoming races from the dashboard
+             runners file (not yet in the results files) are included with every res_ field null
+    gps_runs GPS ground loss and rail distance per run (see ingest/gps_link.py), if GPS files present
 
 Column naming in `runs`:
     no prefix   known before the race (safe to use as a model input)
@@ -15,6 +17,11 @@ Column naming in `runs`:
 from pathlib import Path
 
 import duckdb
+
+try:
+    from ingest import gps_link
+except ImportError:   # run as a script: python ingest/build_core.py
+    import gps_link
 
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data/db/racing.duckdb"
@@ -30,7 +37,9 @@ select *, regexp_extract(filename, 'race_results_(\\d{{4}})', 1)::int as src_yea
 from read_csv('{RAW}', union_by_name = true, filename = true, sample_size = -1);
 
 create or replace table tracks as select * from read_csv('{TRACKS}');
+"""
 
+TABLE_SQL = f"""
 -- ------------------------------------------------------------------ races
 create or replace table races as
 with r as (
@@ -146,12 +155,62 @@ from live_runners where run_id is not null;
 """
 
 
+# Upcoming and recently run races: in the dashboard runners file but not yet in the results files (TopRate's
+# results backfill runs by hand, so the runners file is days ahead). Recent races carry provisional results from
+# the runners file (finish, margin, WPR, SP, comments; no in-running positions or sectionals). Mapped to the results-file
+# columns (class names to TopRate codes; track = the venue's usual track, or its synthetic track when the going
+# is Synthetic; age / sex / breeding from the horse's latest results row). Scratched runners are left out.
+UPCOMING_SQL = """
+create or replace temp table _venue_track as
+select venue, arg_max(track, n + case when track = venue then 1e9 else 0 end) track, arg_max(track, case when going in ('Synthetic','Sand','Dirt') then n end) synth_track
+from (select venue, track, going, count(*) n from tr_raw where src_year >= 2024 group by all) group by venue;
+
+create or replace temp table _horse as
+select horse_id, arg_max(horse_age, date) horse_age, max(date) last_date, arg_max(horse_sex, date) horse_sex,
+  arg_max(sire_id, date) sire_id, arg_max(sire, date) sire, arg_max(dam_id, date) dam_id, arg_max(dam, date) dam,
+  arg_max(sire_country, date) sire_country, arg_max(dam_country, date) dam_country
+from tr_raw group by horse_id;
+
+insert into tr_raw by name
+select l.race_id, l.run_id, l.horse_id::bigint horse_id, l.horse, l.date::timestamp date, l.venue,
+  case when l.going in ('Synthetic','Sand','Dirt') then coalesce(v.synth_track, v.track, l.venue)
+       else coalesce(v.track, l.venue) end track,
+  l.race raceNumber, l.distance, l.going, l.track_grading trackGrading, l.rail_position, l.race_name,
+  case when l.race_class = 'Maiden' then 'MAI' when l.race_class = 'Open' then 'OPEN'
+       when l.race_class like 'Benchmark %' then 'BM' || regexp_extract(l.race_class, 'Benchmark (\\d+\\+?)', 1)
+       when l.race_class like 'Class %' then 'CLS' || regexp_extract(l.race_class, 'Class (\\w+)', 1)
+       when regexp_matches(l.race_class, '^Restricted \\d+$') then 'RST' || regexp_extract(l.race_class, '(\\d+)', 1)
+       when l.race_class like 'Restricted % Metro Wins Last Year' then 'R' || regexp_extract(l.race_class, '(\\d+)', 1) || 'MWLY'
+       when l.race_class like 'Restricted % Metro Wins' then 'R' || regexp_extract(l.race_class, '(\\d+)', 1) || 'MW'
+       else upper(l.race_class) end race_class,
+  nullif(l.barrier, 0) barrier, l.weight_carried weightCarried, l.jockey, l.trainer,
+  h.horse_age + coalesce(year(l.date::date) - year(h.last_date), 0) horse_age, h.horse_sex,
+  h.sire_id, h.sire, h.dam_id, h.dam, h.sire_country, h.dam_country,
+  count(*) over (partition by l.race_id) field_size,
+  case when l.resulted = 1 then l.finish_position end positionFinish,
+  case when l.resulted = 1 then l.margin_finish end marginFinish,
+  case when l.resulted = 1 then l.wpr_actual end wpr, case when l.resulted = 1 then 'Provisional' end wprStatus,
+  case when l.resulted = 1 then l.starting_price_sp end priceStarting,
+  case when l.resulted = 1 then l.comments_steward end comments_steward,
+  case when l.resulted = 1 then l.comments_video end comments_video,
+  false isBarrierTrial, false is_jumpout, year(l.date::date) src_year
+from live_runners l
+left join _venue_track v on v.venue = l.venue
+left join _horse h on h.horse_id = l.horse_id::bigint
+where l.race_id is not null and l.run_id is not null and coalesce(l.scratched, 0) = 0
+  and l.race_id not in (select distinct race_id from tr_raw);
+"""
+
+
 def build(db=DB):
     Path(db).parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(db))
     con.execute(SQL)
     if LIVE.exists():
         con.execute(LIVE_SQL)
+        con.execute(UPCOMING_SQL)
+    con.execute(TABLE_SQL)
+    gps_link.build(con)   # table gps_runs, when GPS parquets are in data/interim
     return con
 
 

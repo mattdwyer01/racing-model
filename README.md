@@ -32,6 +32,7 @@ python ingest/build_core.py        # rebuild only (raw files already in data/raw
 - `tracks`: track -> venue, state, location class (M/P/C), surface, in_scope (from `ingest/tracks.csv`)
 - `races`: one row per race or trial; parsed class, rail offset, surface, `full_coverage` flag
 - `runs`: one row per runner
+- `gps_runs`: GPS ground loss and rail distance per run, linked to TopRate `run_id` (`ingest/gps_link.py`; built when `rq_`/`rc_gps_*.parquet` are in `data/interim/`)
 - `live_runners`, `race_times`, `fixed_prices_final`: from the dashboard's `toprate_runners.csv` (put a copy in `data/raw/live/`); race number, start time and near-jump fixed price from Apr 2026
 
 Naming rule in `runs`: columns without a prefix are known before the race. Columns starting `res_` are

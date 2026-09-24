@@ -83,11 +83,18 @@ def main():
     tr_all["year"] = tr_all["race_date"].dt.year
     qld_share = tr_all.groupby("year")["hit"].apply(lambda x: x.notna().mean()).rename("share_of_all_QLD_race_runs")
 
+    # race-level FinishTime vs the winner's own time (winner time_s matches the official time)
+    w = ran[ran["finish"] == 1]
+    gap = (w["race_time_s"] - w["time_s"]).dropna()
+    time_note = (f"- Race `race_time_s` minus winner `time_s`: median {gap.median():+.2f}s, "
+                 f"IQR {gap.quantile(.25):+.2f} to {gap.quantile(.75):+.2f}s, "
+                 f"{(gap.abs() > 60).sum()} races off by more than 60s" if len(gap) else "- race_time_s: none")
+
     unmatched = m[~m.matched].groupby("venue").size().sort_values(ascending=False).head(10)
 
     L = ["# RQ GPS coverage and match to TopRate", "",
          f"- Files: rq_gps_runs {len(runs):,} rows ({len(ran):,} runners that ran), rq_gps_sections {len(secs):,} rows",
-         f"- TopRate QLD runs from Oct 2022 with a duplicate date+venue+horse key: {dup_tr}", "",
+         f"- TopRate QLD runs from Oct 2022 with a duplicate date+venue+horse key: {dup_tr}", time_note, "",
          "## Coverage by year (runners that ran)", "", cov.to_markdown(floatfmt=".3f"), "",
          "## Match rate, RQ -> TopRate (date + venue + horse)", "", rq_side.to_markdown(floatfmt=".3f"), "",
          "## Match rate, TopRate -> RQ at meetings RQ covers", "", tr_side.to_markdown(floatfmt=".3f"), "",

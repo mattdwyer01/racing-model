@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 90
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATA_REPO: ${{ vars.DATA_REPO || github.repository }}
+      DATA_TOKEN: ${{ secrets.DATA_TOKEN || secrets.GITHUB_TOKEN }}
       RACINGCOM_API_KEY: ${{ secrets.RACINGCOM_API_KEY }}
       RACINGCOM_CAL_API_KEY: ${{ secrets.RACINGCOM_CAL_API_KEY }}
     steps:

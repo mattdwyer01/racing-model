@@ -1,0 +1,79 @@
+name: Racing Model -> TopRate dashboard (daily)
+
+# Pulls the latest TopRate results, runners and TAB price snapshots from the public TopRate repo, rebuilds the
+# database, scores today's and the next two days' VIC/SA/QLD races with the production model (projections are
+# archived the day they are made, so past races keep their pre-race projection), and commits racing_model.json
+# into the TopRate repo, where the dashboard shows it as the Racing Model panel (blend and edge recomputed live
+# from TopRate's own fixed-price refresh).
+#
+# Needs: secret TOPRATE_PUSH_TOKEN (fine-grained token, Contents read/write on mattdwyer01/toprate).
+# Data store: variable DATA_REPO + secret DATA_TOKEN (private data repo); defaults to this repo's release.
+# The build needs ~10 GB of memory: set the repo variable DASHBOARD_RUNNER to `vultr-au` to run on the Vultr box.
+
+on:
+  schedule:
+    - cron: "45 19 * * *"     # 05:45 AEST / 06:45 AEDT, after the GPS job
+    - cron: "15 1 * * *"      # 11:15 AEST: refresh fields and scratchings before most races
+  workflow_dispatch:
+
+permissions:
+  contents: write              # data store (release assets)
+
+concurrency:
+  group: dashboard
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ${{ vars.DASHBOARD_RUNNER == 'vultr-au' && fromJSON('["self-hosted","vultr-au"]') || 'ubuntu-latest' }}
+    timeout-minutes: 150
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATA_REPO: ${{ vars.DATA_REPO || github.repository }}
+      DATA_TOKEN: ${{ secrets.DATA_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull TopRate results, runners and prices
+        run: python pipeline/pull_toprate.py
+
+      - name: Pull the store and build the database
+        run: python pipeline/bootstrap.py
+
+      - name: Check out the TopRate repo (racing_model.json only)
+        uses: actions/checkout@v4
+        with:
+          repository: mattdwyer01/toprate
+          token: ${{ secrets.TOPRATE_PUSH_TOKEN }}
+          path: toprate
+          fetch-depth: 1
+          sparse-checkout: racing_model.json
+          sparse-checkout-cone-mode: false
+
+      - name: Score races and write racing_model.json
+        run: python -W ignore tools/dashboard_export.py --toprate-dir toprate
+
+      - name: Commit to TopRate
+        working-directory: toprate
+        run: |
+          git config user.name "racing-model bot"
+          git config user.email "racing-model-bot@users.noreply.github.com"
+          git add racing_model.json
+          git diff --cached --quiet && { echo "no change"; exit 0; }
+          git commit -m "Racing model projections $(TZ=Australia/Melbourne date +%F\ %H:%M)"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep $((i * 10))
+          done
+          exit 1
+
+      - name: Clean up
+        if: always()
+        run: rm -rf toprate

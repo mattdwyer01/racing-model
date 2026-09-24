@@ -33,6 +33,19 @@ FILE = "toprate_runners.csv"
 COLS = ["run_id", "race_id", "fixed_win_price", "scratched", "resulted"]
 
 
+def _read(data: bytes) -> pd.DataFrame:
+    """Read only the needed columns; pyarrow is ~10x faster than pandas on these 100MB files."""
+    try:
+        import pyarrow.csv as pc
+        head = data[:data.index(b"\n")].decode().split(",")
+        keep = [c.strip('"') for c in head if c.strip('"') in COLS]
+        t = pc.read_csv(io.BytesIO(data), convert_options=pc.ConvertOptions(
+            include_columns=keep, column_types={c: "float64" for c in keep}))
+        return t.to_pandas()
+    except Exception:   # no pyarrow, or a version it can't parse: fall back to pandas
+        return pd.read_csv(io.BytesIO(data), usecols=lambda c: c in COLS, low_memory=False)
+
+
 def commits(repo):
     out = subprocess.run(["git", "-C", repo, "log", "--reverse", "--format=%H %cI", "--", FILE],
                          capture_output=True, text=True, check=True).stdout.split("\n")
@@ -71,7 +84,7 @@ def main():
         if data is None:
             continue
         try:
-            df = pd.read_csv(io.BytesIO(data), usecols=lambda c: c in COLS, low_memory=False)
+            df = _read(data)
         except Exception as e:
             print(f"  skip {sha[:8]}: {e}", file=sys.stderr)
             continue

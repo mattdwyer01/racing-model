@@ -4,7 +4,7 @@
     python pipeline/bootstrap.py --force    # re-download everything
 
 Pulls every race_results_YYYY.csv.gz into data/raw/toprate/ and toprate_runners.csv
-into data/raw/live/, then runs ingest/build_core.py.
+into data/raw/live/, GPS parquets (rq_/rc_gps_*) and the git price history into data/interim/, then runs ingest/build_core.py.
 """
 import re
 import sys
@@ -18,6 +18,7 @@ from pipeline import store  # noqa: E402
 
 TOPRATE = re.compile(r"race_results_\d{4}\.csv\.gz")
 LIVE = "toprate_runners.csv"
+GPS = re.compile(r"(rq|rc)_gps_(runs|sections)\.parquet|tab_price_history_from_git\.csv\.gz")
 
 
 def pull(force=False):
@@ -25,6 +26,9 @@ def pull(force=False):
     wanted = {n: ROOT / "data/raw/toprate" / n for n in names if TOPRATE.fullmatch(n)}
     if LIVE in names:
         wanted[LIVE] = ROOT / "data/raw/live" / LIVE
+    for n in names:
+        if GPS.fullmatch(n):
+            wanted[n] = ROOT / "data/interim" / n
     if not any(TOPRATE.fullmatch(n) for n in wanted):
         sys.exit("no TopRate yearly files in the store")
     for n, dest in sorted(wanted.items()):
