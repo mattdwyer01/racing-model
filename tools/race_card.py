@@ -34,7 +34,7 @@ select r.run_id, r.horse, r.barrier, r.jockey, r.trainer, r.weight_kg, ra.track,
   ra.going, ra.race_id, t.race_no, l.fixed_win_price, l.open_price
 from runs r join races ra using (race_id) left join race_times t on t.race_id = ra.race_id
 left join live_runners l on l.run_id = r.run_id
-where r.race_date = date '{d}' and not r.is_trial_or_jumpout
+where r.race_date in ({d}) and not r.is_trial_or_jumpout
 """
 SHOW = ["ability", "form shape", "distance / going", "prep", "race-day projection", "track bias",
         "jockey / trainer", "comments", "ground loss (past runs)", "position value", "age / sex / weight"]
@@ -73,27 +73,23 @@ def speed_map(rows, date):
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--date", required=True)
-    ap.add_argument("--track", default=None, help="substring of the track name")
-    a = ap.parse_args()
-    con = duckdb.connect(str(figure.DB), read_only=True)
+def score(con, train_end, dates, track=None):
+    """Card rows for every VIC/SA/QLD race on `dates` with the production model trained on races before
+    train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
     om.EXTRA_PROJ, om.KEEP_SIM = True, True
-    raw = om.build_features(con, a.date)
-    m, _ = production.train(con, a.date, e=om.add_context(eval_set(raw)))
-    info = con.sql(INFO_SQL.format(d=a.date)).df()
-    if a.track:
-        info = info[info["track"].str.contains(a.track, case=False)]
+    raw = om.build_features(con, train_end)
+    m, _ = production.train(con, train_end, e=om.add_context(eval_set(raw)))
+    info = con.sql(INFO_SQL.format(d=", ".join(f"date '{x}'" for x in dates))).df()
+    if track:
+        info = info[info["track"].str.contains(track, case=False)]
     rows = raw[raw["run_id"].isin(info["run_id"]) & raw["in_scope"]]
     if rows.empty:
-        sys.exit("no VIC/SA/QLD races found for that date / track")
+        return pd.DataFrame(), m
     rows = rows.merge(info[["run_id", "fixed_win_price", "open_price"]], on="run_id", how="left")
     pr = prep(rows)
     c = production.card(m, pr, market="log_p_mkt").merge(info, on=["run_id", "race_id"])
-    c = c.merge(pr[["run_id", "h_wpr", "h_none", "proj_gl_v4"]], on="run_id", how="left")
-    sm = speed_map(rows, a.date)
-    c = c.merge(sm, on="run_id", how="left")
+    c = c.merge(pr[["run_id", "race_date", "h_wpr", "h_none", "proj_gl_v4"]], on="run_id", how="left")
+    c = c.merge(speed_map(rows, train_end), on="run_id", how="left")
     # projected rating: field's average decayed WPR (horses with history) + rating vs field
     lvl = c["h_wpr"].where(c["h_none"] == 0).groupby(c["race_id"]).transform("mean")
     c["projected rating"] = lvl + c["rating vs field"]
@@ -101,6 +97,18 @@ def main():
     for price, lab in [("SP", "edge vs SP"), ("fixed_win_price", "edge vs fixed")]:
         if "blend %" in c:
             c[lab] = c["blend %"] / 100 * c[price] - 1
+    return c, m
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--date", required=True)
+    ap.add_argument("--track", default=None, help="substring of the track name")
+    a = ap.parse_args()
+    con = duckdb.connect(str(figure.DB), read_only=True)
+    c, m = score(con, a.date, [a.date], a.track)
+    if c.empty:
+        sys.exit("no VIC/SA/QLD races found for that date / track")
     L = [f"# Race card {a.date}{' ' + a.track if a.track else ''}", "",
          f"- Model trained on races before {a.date} (blend a = {m['a']:.3f}, b = {m['b']:.3f}). Contributions are WPR"
          " points vs the field average; projected rating = field's average rating + rating vs field. Model and blend"

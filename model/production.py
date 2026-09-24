@@ -116,7 +116,9 @@ def card(m, race_df, market="log_p_sp"):
     if "rating" in m and "r_mu" in m["beta"].index:
         df = add_mu(m["rating"], df)
     X = df[m["beta"].index].astype(float)
-    Xd = X - X.groupby(df["race_id"].to_numpy()).transform("mean")
+    grp = df["race_id"].to_numpy()
+    X = X.fillna(X.groupby(grp).transform("mean")).fillna(0.0)     # upcoming fields: missing weight etc. = field avg
+    Xd = X - X.groupby(grp).transform("mean")
     contrib = Xd * m["beta"] / m["wpr_unit"]
     out = pd.DataFrame(index=df.index)
     for g in list(GROUPS) + ["other"]:
@@ -125,12 +127,14 @@ def card(m, race_df, market="log_p_sp"):
             out[g] = contrib[cols].sum(1)
     out["rating vs field"] = contrib.sum(1)
     race = df["race"].to_numpy()
-    p_model = om._softmax(utility(df, m["beta"]), race)
+    p_model = om._softmax(X.to_numpy() @ m["beta"].to_numpy(), race)
     out["model %"] = 100 * p_model
     out["model $"] = 1 / p_model
-    if market in df and df[market].notna().all():
-        p_mkt = om._softmax(m["c"] * df[market].to_numpy(float), race)
-        p_blend = om._softmax(m["a"] * np.log(np.clip(p_model, 1e-12, 1)) + m["b"] * df[market].to_numpy(float), race)
+    if market in df:
+        has = df[market].notna().groupby(grp).transform("all").to_numpy()     # blend races with a full market
+        mk = df[market].fillna(0).to_numpy(float)
+        p_mkt = np.where(has, om._softmax(m["c"] * mk, race), np.nan)
+        p_blend = np.where(has, om._softmax(m["a"] * np.log(np.clip(p_model, 1e-12, 1)) + m["b"] * mk, race), np.nan)
         out["market $ (calibrated)"] = 1 / p_mkt
         out["blend %"] = 100 * p_blend
         out["blend $"] = 1 / p_blend

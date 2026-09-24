@@ -1,0 +1,63 @@
+name: Dashboard (daily)
+
+# Pulls the latest TopRate results, runners and TAB price snapshots from the public TopRate repo, rebuilds the
+# database, scores today's and the next two days' VIC/SA/QLD races with the production model, adds the last week's
+# results next to the projections made before them, and publishes site/ to GitHub Pages.
+#
+# The build needs ~10 GB of memory: set the repo variable DASHBOARD_RUNNER to `vultr-au` to run on the Vultr box
+# (GitHub's standard runners for private repos are smaller). GitHub Pages on a private repo needs a paid plan,
+# and the published site is public: anyone with the URL can see it.
+
+on:
+  schedule:
+    - cron: "45 19 * * *"     # 05:45 AEST / 06:45 AEDT, after the GPS job
+    - cron: "15 1 * * *"      # 11:15 AEST: refresh fields, scratchings and prices before most races
+  workflow_dispatch:
+
+permissions:
+  contents: write              # data store (release assets)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: dashboard
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ${{ vars.DASHBOARD_RUNNER == 'vultr-au' && fromJSON('["self-hosted","vultr-au"]') || 'ubuntu-latest' }}
+    timeout-minutes: 150
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull TopRate results, runners and prices
+        run: python pipeline/pull_toprate.py
+
+      - name: Pull the store and build the database
+        run: python pipeline/bootstrap.py
+
+      - name: Score races and export dashboard data
+        run: python -W ignore tools/dashboard_export.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

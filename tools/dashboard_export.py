@@ -1,0 +1,201 @@
+"""Dashboard export: JSON for the static site in site/ (GitHub Pages).
+
+    python tools/dashboard_export.py                  # today (Melbourne) -> site/data/
+    python tools/dashboard_export.py --date 2026-09-24 --no-store
+
+Writes:
+  site/data/index.json        dates available (upcoming and recent), meetings and races per date, model info
+  site/data/day/<date>.json   every VIC/SA/QLD race that day: speed map, pace, ratings, prices; results once run
+  site/data/tracking.json     model accuracy on resulted races: log loss of model, blend (with SP) and SP by day
+Projections are archived (data/interim/dash_projections.csv.gz, synced to the store) the day they are made, so a
+past race always shows the projection made BEFORE it ran, next to what happened. Days with no archived
+projection (first run) are backfilled with a model trained before the earliest such day (still pre-race).
+"""
+import argparse
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import duckdb
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from model import figure, production  # noqa: E402
+from pipeline import store  # noqa: E402
+sys.path.insert(0, str(ROOT / "tools"))
+import race_card  # noqa: E402
+
+OUT = ROOT / "site/data"
+ARCHIVE = ROOT / "data/interim/dash_projections.csv.gz"
+AHEAD, BACK = 2, 7
+GROUPS = [g for g in race_card.SHOW]
+KEEP = ["race_id", "run_id", "race_date", "horse", "barrier", "jockey", "trainer", "weight_kg", "track",
+        "distance", "race_class", "going", "race_no", "settle", "P(leads)", "pace vs distance avg", "P(slow)",
+        "P(even)", "P(fast)", "proj_gl_v4", "race-day adj", "projected rating", "rating vs field", "model %",
+        "model $", "blend %", "blend $", "fixed_win_price", "open_price", "edge vs fixed"] + GROUPS
+
+RESULT_SQL = """
+select r.run_id, r.res_finish finish, r.res_margin_l margin, r.res_wpr wpr, r.sp, r.res_pos800 pos800,
+  r.res_marg800 marg800, r.res_stewards stewards, g.res_gps_extra_m gps_extra_m
+from runs r left join gps_runs g using (run_id)
+where r.race_date in ({d})
+"""
+META_SQL = """
+select ra.race_id, ra.state, ra.rail_text, ra.res_shape_early shape_early, t.start_utc
+from races ra left join race_times t using (race_id) where ra.race_date in ({d})
+"""
+
+
+def _dates(d0, n, step):
+    return [d0 + dt.timedelta(days=step * i) for i in range(1, n + 1)]
+
+
+def _sql_dates(ds):
+    return ", ".join(f"date '{d}'" for d in ds)
+
+
+def _clean(v):
+    if isinstance(v, (float, np.floating)):
+        return None if not np.isfinite(v) else round(float(v), 4)
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (pd.Timestamp, dt.date)):
+        return str(v)[:19]
+    return v
+
+
+def _archive_rows(c, m, scored_on):
+    if c.empty:
+        return pd.DataFrame(columns=KEEP)
+    a = c[[k for k in KEEP if k in c]].copy()
+    a["scored_on"], a["train_end"] = str(scored_on), m["train_end"]
+    a["blend_a"], a["blend_b"], a["cal_c"] = m["a"], m["b"], m["c"]
+    return a
+
+
+def day_json(d, rows, results, meta):
+    rows = rows.merge(results, on="run_id", how="left") if len(results) else rows
+    rows = rows.merge(meta, on="race_id", how="left")
+    races = []
+    for rid, g in rows.groupby("race_id", sort=False):
+        g = g.sort_values("settle")
+        g = g.assign(settle_rank=np.arange(1, len(g) + 1))
+        r0 = g.iloc[0]
+        resulted = "finish" in g and g["finish"].notna().any()
+        runners = []
+        for _, x in g.sort_values("projected rating", ascending=False).iterrows():
+            run = {"run_id": x["run_id"], "horse": x["horse"], "barrier": x.get("barrier"), "jockey": x.get("jockey"),
+                   "trainer": x.get("trainer"), "weight": x.get("weight_kg"), "settle": x.get("settle"),
+                   "settle_rank": x["settle_rank"], "p_lead": x.get("P(leads)"), "extra_ground": x.get("proj_gl_v4"),
+                   "raceday_adj": x.get("race-day adj"), "rating": x.get("projected rating"),
+                   "vs_field": x.get("rating vs field"), "groups": {k: _clean(x.get(k)) for k in GROUPS if k in x},
+                   "model_price": x.get("model $"), "blend_price": x.get("blend $"), "fixed": x.get("fixed_win_price"),
+                   "open": x.get("open_price"), "edge_fixed": x.get("edge vs fixed")}
+            if resulted:
+                run["result"] = {"finish": x.get("finish"), "margin": x.get("margin"), "wpr": x.get("wpr"),
+                                 "sp": x.get("sp"), "pos800": x.get("pos800"), "gps_extra_m": x.get("gps_extra_m"),
+                                 "stewards": x.get("stewards")}
+            runners.append({k: _clean(v) if not isinstance(v, dict) else
+                            {kk: _clean(vv) for kk, vv in v.items()} for k, v in run.items()})
+        races.append({"race_id": int(rid), "race_no": _clean(r0.get("race_no")), "track": r0["track"],
+                      "state": r0.get("state"), "start_utc": _clean(r0.get("start_utc")),
+                      "distance": _clean(r0.get("distance")), "class": r0.get("race_class"), "going": r0.get("going"),
+                      "rail": r0.get("rail_text"), "resulted": bool(resulted),
+                      "pace": {"vs_avg": _clean(r0.get("pace vs distance avg")), "slow": _clean(r0.get("P(slow)")),
+                               "even": _clean(r0.get("P(even)")), "fast": _clean(r0.get("P(fast)")),
+                               "actual_shape_early": _clean(r0.get("shape_early"))},
+                      "scored_on": r0.get("scored_on"), "runners": runners})
+    races.sort(key=lambda r: (r["track"], r["race_no"] or 0))
+    meetings = {}
+    for r in races:
+        meetings.setdefault((r["track"], r["state"]), []).append(r)
+    return {"date": str(d), "meetings": [{"track": t, "state": s, "races": rs} for (t, s), rs in meetings.items()]}
+
+
+def tracking(arch, res):
+    """Model vs market on resulted races, using the projections archived before each race."""
+    x = arch.merge(res[["run_id", "finish", "sp"]], on="run_id", how="inner")
+    x = x[x["finish"].notna() & (x["sp"] > 1)]
+    ok = x.groupby("race_id").agg(n=("run_id", "size"), w=("finish", lambda s: (s == 1).sum()))
+    x = x[x["race_id"].isin(ok.index[(ok.n >= 2) & (ok.w == 1)])].copy()
+    if x.empty:
+        return {"days": []}
+    x = x.sort_values(["race_id", "run_id"])
+    inv = 1 / x["sp"]
+    x["p_sp"] = inv / inv.groupby(x["race_id"]).transform("sum")
+    pm = (x["model %"] / 100).clip(1e-9)
+    s = x["blend_a"] * np.log(pm) + x["blend_b"] * np.log(x["p_sp"])
+    x["p_blend"] = np.exp(s - s.groupby(x["race_id"]).transform("max"))
+    x["p_blend"] /= x.groupby("race_id")["p_blend"].transform("sum")
+    x["p_model"] = pm / pm.groupby(x["race_id"]).transform("sum")
+    w = x[x["finish"] == 1]
+    rank = x.groupby("race_id")["projected rating"].rank(ascending=False)
+    top_won = (x.assign(r=rank)[lambda t: t["r"] == 1].groupby("race_id")["finish"].min() == 1)
+    days = []
+    for d, g in w.groupby("race_date"):
+        days.append({"date": str(d)[:10], "races": int(len(g)),
+                     "ll_model": float(-np.log(g["p_model"]).mean()), "ll_blend": float(-np.log(g["p_blend"]).mean()),
+                     "ll_sp": float(-np.log(g["p_sp"]).mean()),
+                     "top_rated_won": float(top_won.reindex(g["race_id"]).mean())})
+    return {"days": days, "total": {"races": int(len(w)), "ll_model": float(-np.log(w["p_model"]).mean()),
+                                    "ll_blend": float(-np.log(w["p_blend"]).mean()),
+                                    "ll_sp": float(-np.log(w["p_sp"]).mean()),
+                                    "top_rated_won": float(top_won.mean())}}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--date", default=None)
+    ap.add_argument("--no-store", action="store_true")
+    a = ap.parse_args()
+    today = dt.date.fromisoformat(a.date) if a.date else dt.datetime.now(ZoneInfo("Australia/Melbourne")).date()
+    con = duckdb.connect(str(figure.DB), read_only=True)
+    have = {r[0] for r in con.sql("select distinct race_date from races").fetchall()}
+    upcoming = [d for d in [today] + _dates(today, AHEAD, 1) if d in have]
+    recent = [d for d in _dates(today, BACK, -1) if d in have]
+    if not a.no_store:
+        store.get(ARCHIVE.name, ARCHIVE)
+    arch = pd.read_csv(ARCHIVE, parse_dates=["race_date"]) if ARCHIVE.exists() else pd.DataFrame(columns=KEEP)
+
+    c, m = race_card.score(con, str(today), [str(d) for d in upcoming])
+    new = _archive_rows(c, m, today)
+    missing = [d for d in recent if not (arch["race_date"].dt.date == d).any()] if len(arch) else recent
+    if missing:                      # first run: one model trained before the earliest missing day (pre-race)
+        cb, mb = race_card.score(con, str(min(missing)), [str(d) for d in missing])
+        new = pd.concat([new, _archive_rows(cb, mb, min(missing))], ignore_index=True)
+    new["race_date"] = pd.to_datetime(new["race_date"])
+    # keep the earliest projection for past days; today's and future days are replaced by the latest run
+    arch = arch[~arch["race_date"].dt.date.isin(upcoming)]
+    arch = pd.concat([arch, new], ignore_index=True).drop_duplicates(["run_id"], keep="first")
+    ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
+    arch.to_csv(ARCHIVE, index=False, compression="gzip")
+    if not a.no_store:
+        store.put(ARCHIVE, ARCHIVE.name)
+
+    (OUT / "day").mkdir(parents=True, exist_ok=True)
+    days = sorted(set(upcoming) | set(recent))
+    res = con.sql(RESULT_SQL.format(d=_sql_dates(days))).df()
+    meta = con.sql(META_SQL.format(d=_sql_dates(days))).df()
+    index = {"generated_utc": dt.datetime.now(dt.timezone.utc).isoformat()[:19], "today": str(today),
+             "model": {"train_end": m["train_end"], "blend_a": m["a"], "blend_b": m["b"]}, "days": []}
+    for d in days:
+        rows = arch[arch["race_date"].dt.date == d]
+        if rows.empty:
+            continue
+        j = day_json(d, rows, res, meta)
+        (OUT / "day" / f"{d}.json").write_text(json.dumps(j, separators=(",", ":")))
+        index["days"].append({"date": str(d), "kind": "upcoming" if d >= today else "recent",
+                              "meetings": [{"track": mt["track"], "state": mt["state"], "races": len(mt["races"])}
+                                           for mt in j["meetings"]]})
+    all_res = con.sql(RESULT_SQL.replace("where r.race_date in ({d})", "where r.race_date >= date '2026-01-01'")).df()
+    (OUT / "tracking.json").write_text(json.dumps(tracking(arch, all_res)))
+    (OUT / "index.json").write_text(json.dumps(index, default=_clean))
+    print(f"exported {len(index['days'])} days; archive {len(arch):,} runners", flush=True)
+
+
+if __name__ == "__main__":
+    main()

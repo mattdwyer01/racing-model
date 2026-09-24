@@ -87,6 +87,7 @@ def fit_coef_next(d, train_end, since="2021-01-01"):
     nxt = t.groupby("horse_id")["wpr"].shift(-1)
     nxt_date = t.groupby("horse_id")["race_date"].shift(-1)
     m = t["wpr"].notna() & nxt.notna() & (nxt_date < train_end) & (t["race_date"] >= since)
+    m &= t[FIG2_COMPS].notna().all(axis=1)       # provisional runs (dashboard runners file) have no weight
     X = np.c_[np.ones(m.sum()), t.loc[m, ["wpr"] + FIG2_COMPS].to_numpy(float)]
     b = np.linalg.lstsq(X, nxt[m].to_numpy(float), rcond=None)[0]
     return {"wpr": 1.0, **{c: float(b[i + 2] / b[1]) for i, c in enumerate(FIG2_COMPS)}}
