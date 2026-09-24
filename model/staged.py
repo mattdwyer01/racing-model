@@ -190,6 +190,8 @@ def _frame(con):
     more = con.sql("""select r.run_id, r.res_pos800 pos800, r.res_marg800 marg800, ra.res_shape_mid y_mid,
                         ra.res_shape_late y_late from runs r join races ra using (race_id)""").df()
     fr = fr.merge(more, on="run_id", how="left")
+    for c in ["y_mid", "y_late"]:                  # a few 2023 races carry absurd mid shapes (sd 9.8 vs ~2.5)
+        fr[c] = fr[c].where(fr[c].abs() <= 12)
     return {"d": d, "h": h, "fr": fr}
 
 
