@@ -168,7 +168,9 @@ def write_toprate(dest, rows, m, track):
             "p": f(x["model %"] / 100 if pd.notna(x.get("model %")) else None), "s": f(x.get("settle")),
             "l": f(x.get("P(leads)")), "g": f(x.get("proj_gl_v4")), "d": f(x.get("race-day adj")),
             "ab": f(x.get("ability")), "jt": f(x.get("jockey / trainer")), "pv": f(x.get("pos value")),
-            "pf": 1 if str(x.get("pos flag")) in ("True", "1", "1.0") else 0}
+            "pf": 1 if str(x.get("pos flag")) in ("True", "1", "1.0") else 0,
+            # rating breakdown (WPR points vs the field) for the runner detail popup
+            "gb": {k: round(v, 2) for k in GROUPS if (v := f(x.get(k))) is not None and abs(v) >= 0.005}}
         rid = str(int(x["race_id"]))
         if rid not in races:
             pace = [f(x.get("P(slow)")), f(x.get("P(even)")), f(x.get("P(fast)"))]
