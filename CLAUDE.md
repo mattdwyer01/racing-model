@@ -99,6 +99,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     that uses later races (hindsight). Earlier races only add nothing, even with perfect information (actual
     positions + WPR: -0.0002 model, +0.0002 with SP; race 5 onwards also n.s.). Not built. The race page shows
     the model's projected bias from past meetings instead (`dashboard_export.race_bias`).
+  - Gap-from-top lines for the dashboard table (4,061 VIC/SA/QLD races Apr to Sep 2026, OOS; gap WPR = 6.843 x
+    ln(p_top / p)): within 4 WPR A/E at SP 1.08 (2.6 runners, 56% of winners); beyond 8 WPR A/E 0.86, ROI -43%
+    (79% of winners inside). Stable Apr-Jul vs Aug-Sep. TopRate table shows 4 / 8 WPR lines (RaceDetail).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
