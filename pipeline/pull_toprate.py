@@ -44,6 +44,7 @@ def archive_prices(history_csv):
     if SNAPSHOTS.exists():
         new = pd.concat([pd.read_csv(SNAPSHOTS), new], ignore_index=True)
     new = new.drop_duplicates(["run_id", "snapshot_time"]).sort_values(["race_id", "run_id", "snapshot_time"])
+    SNAPSHOTS.parent.mkdir(parents=True, exist_ok=True)
     new.to_csv(SNAPSHOTS, index=False, compression="gzip")
     print(f"price snapshots archived: {len(new):,} rows, {new['race_id'].nunique():,} races", flush=True)
 
