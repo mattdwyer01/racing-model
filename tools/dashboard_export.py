@@ -72,7 +72,6 @@ def _clean(v):
 def _archive_rows(c, m, scored_on):
     if c.empty:
         return pd.DataFrame(columns=KEEP)
-    arch["race_date"] = pd.to_datetime(arch["race_date"])   # an empty archive reads as object dtype
     a = c[[k for k in KEEP if k in c]].copy()
     a["scored_on"], a["train_end"] = str(scored_on), m["train_end"]
     a["blend_a"], a["blend_b"], a["cal_c"] = m["a"], m["b"], m["c"]
@@ -136,8 +135,8 @@ def write_toprate(dest, rows, m, track):
             pace = [f(x.get("P(slow)")), f(x.get("P(even)")), f(x.get("P(fast)"))]
             races[rid] = {"pace": pace if None not in pace else None, "pv": f(x.get("pace vs distance avg")),
                           "on": str(x.get("scored_on"))[:10]}
-    payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": m["train_end"],
-               "a": float(m["a"]), "b": float(m["b"]), "posFlagThreshold": m.get("pos_flag_thr"),
+    payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": str(m["train_end"])[:10],
+               "a": float(m["a"]), "b": float(m["b"]), "posFlagThreshold": f(m.get("pos_flag_thr")),
                "races": races, "runners": runners,
                "tracking": track.get("total")}
     dest.mkdir(parents=True, exist_ok=True)
@@ -191,6 +190,7 @@ def main():
     if not a.no_store:
         store.get(ARCHIVE.name, ARCHIVE)
     arch = pd.read_csv(ARCHIVE, parse_dates=["race_date"]) if ARCHIVE.exists() else pd.DataFrame(columns=KEEP)
+    arch["race_date"] = pd.to_datetime(arch["race_date"])   # an empty archive reads as object dtype
 
     c, m = race_card.score(con, str(today), [str(d) for d in upcoming])
     new = _archive_rows(c, m, today)
