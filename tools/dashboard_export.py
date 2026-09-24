@@ -51,6 +51,23 @@ from races ra left join race_times t using (race_id) where ra.race_date in ({d})
 """
 
 
+def _missing_days(con, arch, days):
+    """Recent days with a state that raced but has nothing archived (a new day, or a state added to scope)."""
+    if not days:
+        return []
+    states = ["VIC", "SA", "QLD"] + (production.TRAIN_EXTRA_STATES if production.CARD_ALL_STATES else [])
+    ran = con.sql(f"""select race_date::date d, state, race_id from races
+                      where race_date::date in ({", ".join(f"date '{x}'" for x in days)})
+                        and state in ({", ".join(f"'{x}'" for x in states)}) and not coalesce(is_trial, false)""").df()
+    got = set(arch["race_id"].astype("int64")) if len(arch) else set()
+    out = []
+    for d in days:
+        r = ran[ran["d"] == pd.Timestamp(d)]
+        if set(r["state"]) - set(r.loc[r["race_id"].isin(got), "state"]):
+            out.append(d)
+    return out
+
+
 def _dates(d0, n, step):
     return [d0 + dt.timedelta(days=step * i) for i in range(1, n + 1)]
 
@@ -117,24 +134,48 @@ def day_json(d, rows, results, meta):
     return {"date": str(d), "meetings": [{"track": t, "state": s, "races": rs} for (t, s), rs in meetings.items()]}
 
 
+def race_bias(rows):
+    """Projected track bias per race, as the model applies it: the runners' "track bias" contribution (WPR
+    points, from past meetings at the track: long-run and recent same-rail) regressed within the race on
+    projected settle share (0 leader, 1 last) and barrier share (0 inside, 1 outside).
+    lead = WPR edge of a leader over a backmarker; inside = of the inside draw over the outside draw."""
+    out = {}
+    if "track bias" not in rows:
+        return out
+    for rid, g in rows.groupby("race_id"):
+        g = g.dropna(subset=["track bias", "settle", "barrier"])
+        if len(g) < 4:
+            continue
+        bar = (g["barrier"].rank(method="first") - 1) / max(len(g) - 1, 1)
+        X = np.column_stack([np.ones(len(g)), g["settle"].to_numpy(float), bar.to_numpy(float)])
+        if np.linalg.matrix_rank(X) < 3:
+            continue
+        b = np.linalg.lstsq(X, g["track bias"].to_numpy(float), rcond=None)[0]
+        out[int(rid)] = {"lead": round(float(-b[1]), 2), "inside": round(float(-b[2]), 2)}
+    return out
+
+
 def write_toprate(dest, rows, m, track):
     """racing_model.json for TopRate's frontend (compact keys, see its lib/racingModel.ts)."""
     def f(v):
         v = _clean(v)
         return None if isinstance(v, str) else v
     runners, races = {}, {}
+    bias = race_bias(rows)
     for _, x in rows.iterrows():
         runners[str(int(x["run_id"]))] = {
             "r": f(x.get("projected rating")), "v": f(x.get("rating vs field")),
             "p": f(x["model %"] / 100 if pd.notna(x.get("model %")) else None), "s": f(x.get("settle")),
             "l": f(x.get("P(leads)")), "g": f(x.get("proj_gl_v4")), "d": f(x.get("race-day adj")),
             "ab": f(x.get("ability")), "jt": f(x.get("jockey / trainer")), "pv": f(x.get("pos value")),
-            "pf": 1 if str(x.get("pos flag")) in ("True", "1", "1.0") else 0}
+            "pf": 1 if str(x.get("pos flag")) in ("True", "1", "1.0") else 0,
+            # rating breakdown (WPR points vs the field) for the runner detail popup
+            "gb": {k: round(v, 2) for k in GROUPS if (v := f(x.get(k))) is not None and abs(v) >= 0.005}}
         rid = str(int(x["race_id"]))
         if rid not in races:
             pace = [f(x.get("P(slow)")), f(x.get("P(even)")), f(x.get("P(fast)"))]
             races[rid] = {"pace": pace if None not in pace else None, "pv": f(x.get("pace vs distance avg")),
-                          "on": str(x.get("scored_on"))[:10]}
+                          "on": str(x.get("scored_on"))[:10], "bias": bias.get(int(x["race_id"]))}
     payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": str(m["train_end"])[:10],
                "a": float(m["a"]), "b": float(m["b"]), "posFlagThreshold": f(m.get("pos_flag_thr")),
                "races": races, "runners": runners,
@@ -197,8 +238,9 @@ def main():
 
     c, m = race_card.score(con, str(today), [str(d) for d in upcoming])
     new = _archive_rows(c, m, today)
-    missing = [d for d in recent if not (arch["race_date"].dt.date == d).any()] if len(arch) else recent
-    if missing:                      # first run: one model trained before the earliest missing day (pre-race)
+    missing = _missing_days(con, arch, recent)
+    if missing:                      # one model trained before the earliest missing day (pre-race); rows already
+                                     # archived keep their earlier projection (drop_duplicates below keeps first)
         cb, mb = race_card.score(con, str(min(missing)), [str(d) for d in missing])
         new = pd.concat([new, _archive_rows(cb, mb, min(missing))], ignore_index=True)
     new["race_date"] = pd.to_datetime(new["race_date"])
