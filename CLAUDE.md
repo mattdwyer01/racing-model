@@ -90,6 +90,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     1.9308 (+0.021, significant); with SP ours 1.8315 vs Combo 1.8333 (-0.0018 n.s.), ours vs SP -0.0031.
     Combo's lead is its TopRate rating share: that rating correlates 0.93 with log SP and alone scores 1.868 vs SP
     1.847, i.e. it behaves like a market price, not independent form.
+  - Combo with our race-day adj in place of TopRate's speed_map term (`tools/combo_swap_test.py`,
+    `combo_swap_test.md`, 790 races 22 Aug to 23 Sep 2026, the only window with speed_map): no change (+0.0005
+    alone, -0.0003 with SP, both n.s.; fitted weight no better). TopRate's own speed_map is worth +0.0011 n.s.
+    Position terms are small inside Combo (sd 0.46 / 1.01 WPR vs a field spread of ~8, 50% weight).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
