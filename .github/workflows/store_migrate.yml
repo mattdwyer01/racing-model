@@ -1,0 +1,41 @@
+name: Copy the data store to the private data repo (one-off)
+
+# Copies every asset of this repo's `data` release into mattdwyer01/racing-data (skips files already there),
+# then lists both stores so the sizes can be compared. Safe to re-run. Delete this workflow once done.
+
+on:
+  push:
+    branches: [claude/youthful-dijkstra-4725ha]
+    paths: [.github/workflows/store_migrate.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gps-data              # never while another job writes the store
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATA_REPO: mattdwyer01/racing-data
+      DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+      SRC_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Copy
+        run: python pipeline/store.py migrate ${{ github.repository }}
+      - name: New store
+        run: python pipeline/store.py list
+      - name: Old store
+        env:
+          DATA_REPO: ${{ github.repository }}
+          DATA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python pipeline/store.py list

@@ -98,14 +98,16 @@ def put(path: str | Path, name: str | None = None) -> None:
 
 
 def migrate(src: str) -> None:
-    """Copy every asset of `src`'s data release into the store repo (skips names already there)."""
+    """Copy every asset of `src`'s data release into the store repo (skips names already there).
+    Reads the source with SRC_TOKEN if set (e.g. the Actions GITHUB_TOKEN), else the store token."""
     import tempfile
+    sh = {**_h(), "Authorization": f"Bearer {os.environ['SRC_TOKEN']}"} if os.environ.get("SRC_TOKEN") else _h()
     have = assets()
-    r = requests.get(f"{API}/repos/{src}/releases/tags/{TAG}", headers=_h(), timeout=30)
+    r = requests.get(f"{API}/repos/{src}/releases/tags/{TAG}", headers=sh, timeout=30)
     r.raise_for_status()
     rel_id, page, todo = r.json()["id"], 1, []
     while True:
-        b = requests.get(f"{API}/repos/{src}/releases/{rel_id}/assets", headers=_h(),
+        b = requests.get(f"{API}/repos/{src}/releases/{rel_id}/assets", headers=sh,
                          params={"per_page": 100, "page": page}, timeout=30)
         b.raise_for_status()
         todo += b.json()
@@ -118,7 +120,7 @@ def migrate(src: str) -> None:
             continue
         with tempfile.TemporaryDirectory() as d:
             dest = Path(d) / a["name"]
-            with requests.get(a["url"], headers={**_h(), "Accept": "application/octet-stream"},
+            with requests.get(a["url"], headers={**sh, "Accept": "application/octet-stream"},
                               stream=True, timeout=600) as g:
                 g.raise_for_status()
                 with dest.open("wb") as f:
