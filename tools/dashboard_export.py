@@ -1,12 +1,13 @@
-"""Dashboard export: JSON for the static site in site/ (GitHub Pages).
+"""Dashboard export: the Racing Model layer for the TopRate dashboard (racing_model.json).
 
-    python tools/dashboard_export.py                  # today (Melbourne) -> site/data/
-    python tools/dashboard_export.py --date 2026-09-24 --no-store
+    python tools/dashboard_export.py --toprate-dir ../toprate      # today (Melbourne)
+    python tools/dashboard_export.py --date 2026-09-24 --no-store --toprate-dir /tmp/tr
 
-Writes:
-  site/data/index.json        dates available (upcoming and recent), meetings and races per date, model info
-  site/data/day/<date>.json   every VIC/SA/QLD race that day: speed map, pace, ratings, prices; results once run
-  site/data/tracking.json     model accuracy on resulted races: log loss of model, blend (with SP) and SP by day
+Writes <toprate-dir>/racing_model.json (read by TopRate's frontend/src/lib/racingModel.ts): per runner the
+model's win probability, projected rating and breakdown, v4 settle, P(leads) and extra ground; per race the pace
+chances and when the projection was made; the blend weights (the frontend blends with the live fixed price);
+and a tracking summary (model, blend and SP log loss on resulted races). Optional --site-dir also writes the
+per-day JSON (index.json, day/<date>.json, tracking.json) used by the earlier static site.
 Projections are archived (data/interim/dash_projections.csv.gz, synced to the store) the day they are made, so a
 past race always shows the projection made BEFORE it ran, next to what happened. Days with no archived
 projection (first run) are backfilled with a model trained before the earliest such day (still pre-race).
@@ -29,7 +30,6 @@ from pipeline import store  # noqa: E402
 sys.path.insert(0, str(ROOT / "tools"))
 import race_card  # noqa: E402
 
-OUT = ROOT / "site/data"
 ARCHIVE = ROOT / "data/interim/dash_projections.csv.gz"
 AHEAD, BACK = 2, 7
 GROUPS = [g for g in race_card.SHOW]
@@ -116,6 +116,31 @@ def day_json(d, rows, results, meta):
     return {"date": str(d), "meetings": [{"track": t, "state": s, "races": rs} for (t, s), rs in meetings.items()]}
 
 
+def write_toprate(dest, rows, m, track):
+    """racing_model.json for TopRate's frontend (compact keys, see its lib/racingModel.ts)."""
+    def f(v):
+        v = _clean(v)
+        return None if isinstance(v, str) else v
+    runners, races = {}, {}
+    for _, x in rows.iterrows():
+        runners[str(int(x["run_id"]))] = {
+            "r": f(x.get("projected rating")), "v": f(x.get("rating vs field")),
+            "p": f(x["model %"] / 100 if pd.notna(x.get("model %")) else None), "s": f(x.get("settle")),
+            "l": f(x.get("P(leads)")), "g": f(x.get("proj_gl_v4")), "d": f(x.get("race-day adj")),
+            "ab": f(x.get("ability")), "jt": f(x.get("jockey / trainer"))}
+        rid = str(int(x["race_id"]))
+        if rid not in races:
+            pace = [f(x.get("P(slow)")), f(x.get("P(even)")), f(x.get("P(fast)"))]
+            races[rid] = {"pace": pace if None not in pace else None, "pv": f(x.get("pace vs distance avg")),
+                          "on": str(x.get("scored_on"))[:10]}
+    payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": m["train_end"],
+               "a": float(m["a"]), "b": float(m["b"]), "races": races, "runners": runners,
+               "tracking": track.get("total")}
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "racing_model.json").write_text(json.dumps(payload, separators=(",", ":")))
+    print(f"racing_model.json: {len(races)} races, {len(runners)} runners", flush=True)
+
+
 def tracking(arch, res):
     """Model vs market on resulted races, using the projections archived before each race."""
     x = arch.merge(res[["run_id", "finish", "sp"]], on="run_id", how="inner")
@@ -151,6 +176,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None)
     ap.add_argument("--no-store", action="store_true")
+    ap.add_argument("--toprate-dir", default=None, help="write racing_model.json here (a TopRate checkout)")
+    ap.add_argument("--site-dir", default=None, help="also write the per-day JSON for a static site")
     a = ap.parse_args()
     today = dt.date.fromisoformat(a.date) if a.date else dt.datetime.now(ZoneInfo("Australia/Melbourne")).date()
     con = duckdb.connect(str(figure.DB), read_only=True)
@@ -176,8 +203,15 @@ def main():
     if not a.no_store:
         store.put(ARCHIVE, ARCHIVE.name)
 
-    (OUT / "day").mkdir(parents=True, exist_ok=True)
     days = sorted(set(upcoming) | set(recent))
+    all_res = con.sql(RESULT_SQL.replace("where r.race_date in ({d})", "where r.race_date >= date '2026-01-01'")).df()
+    track = tracking(arch, all_res)
+    if a.toprate_dir:
+        write_toprate(Path(a.toprate_dir), arch[arch["race_date"].dt.date.isin(days)], m, track)
+    if not a.site_dir:
+        return
+    out = Path(a.site_dir)
+    (out / "day").mkdir(parents=True, exist_ok=True)
     res = con.sql(RESULT_SQL.format(d=_sql_dates(days))).df()
     meta = con.sql(META_SQL.format(d=_sql_dates(days))).df()
     index = {"generated_utc": dt.datetime.now(dt.timezone.utc).isoformat()[:19], "today": str(today),
@@ -187,13 +221,12 @@ def main():
         if rows.empty:
             continue
         j = day_json(d, rows, res, meta)
-        (OUT / "day" / f"{d}.json").write_text(json.dumps(j, separators=(",", ":")))
+        (out / "day" / f"{d}.json").write_text(json.dumps(j, separators=(",", ":")))
         index["days"].append({"date": str(d), "kind": "upcoming" if d >= today else "recent",
                               "meetings": [{"track": mt["track"], "state": mt["state"], "races": len(mt["races"])}
                                            for mt in j["meetings"]]})
-    all_res = con.sql(RESULT_SQL.replace("where r.race_date in ({d})", "where r.race_date >= date '2026-01-01'")).df()
-    (OUT / "tracking.json").write_text(json.dumps(tracking(arch, all_res)))
-    (OUT / "index.json").write_text(json.dumps(index, default=_clean))
+    (out / "tracking.json").write_text(json.dumps(track))
+    (out / "index.json").write_text(json.dumps(index, default=_clean))
     print(f"exported {len(index['days'])} days; archive {len(arch):,} runners", flush=True)
 
 
