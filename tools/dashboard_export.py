@@ -51,6 +51,23 @@ from races ra left join race_times t using (race_id) where ra.race_date in ({d})
 """
 
 
+def _missing_days(con, arch, days):
+    """Recent days with a state that raced but has nothing archived (a new day, or a state added to scope)."""
+    if not days:
+        return []
+    states = ["VIC", "SA", "QLD"] + (production.TRAIN_EXTRA_STATES if production.CARD_ALL_STATES else [])
+    ran = con.sql(f"""select race_date::date d, state, race_id from races
+                      where race_date::date in ({", ".join(f"date '{x}'" for x in days)})
+                        and state in ({", ".join(f"'{x}'" for x in states)}) and not coalesce(is_trial, false)""").df()
+    got = set(arch["race_id"].astype("int64")) if len(arch) else set()
+    out = []
+    for d in days:
+        r = ran[ran["d"] == pd.Timestamp(d)]
+        if set(r["state"]) - set(r.loc[r["race_id"].isin(got), "state"]):
+            out.append(d)
+    return out
+
+
 def _dates(d0, n, step):
     return [d0 + dt.timedelta(days=step * i) for i in range(1, n + 1)]
 
@@ -197,8 +214,9 @@ def main():
 
     c, m = race_card.score(con, str(today), [str(d) for d in upcoming])
     new = _archive_rows(c, m, today)
-    missing = [d for d in recent if not (arch["race_date"].dt.date == d).any()] if len(arch) else recent
-    if missing:                      # first run: one model trained before the earliest missing day (pre-race)
+    missing = _missing_days(con, arch, recent)
+    if missing:                      # one model trained before the earliest missing day (pre-race); rows already
+                                     # archived keep their earlier projection (drop_duplicates below keeps first)
         cb, mb = race_card.score(con, str(min(missing)), [str(d) for d in missing])
         new = pd.concat([new, _archive_rows(cb, mb, min(missing))], ignore_index=True)
     new["race_date"] = pd.to_datetime(new["race_date"])
