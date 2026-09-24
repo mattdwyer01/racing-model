@@ -37,6 +37,23 @@ def pull(force=False):
             continue
         store.get(n, dest)
         print(f"got  {n} ({dest.stat().st_size:,} bytes)")
+    _numeric_gps()
+
+
+def _numeric_gps():
+    """Older daily parses stored some RQ GPS numbers as strings; every reader expects numbers."""
+    import pandas as pd
+    for n in ("rq_gps_runs.parquet", "rq_gps_sections.parquet"):
+        p = ROOT / "data/interim" / n
+        if not p.exists():
+            continue
+        d = pd.read_parquet(p)
+        cols = [c for c in ("tab_no", "cum_dist_m", "race_no", "rank", "finish")
+                if c in d and not pd.api.types.is_numeric_dtype(d[c])]
+        if cols:
+            d[cols] = d[cols].apply(pd.to_numeric, errors="coerce")
+            d.to_parquet(p, index=False)
+            print(f"fixed {n}: {', '.join(cols)} to numbers")
 
 
 if __name__ == "__main__":
