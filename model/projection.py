@@ -101,8 +101,8 @@ def _rolling_tendency(con, df, key, col, days, prior_n):
 
 def frame(con, h=None):
     """All runs with every projection input and target. h = figure.history(...) (computed if None)."""
-    d = figure.components(con)
-    h = figure.history(d) if h is None else h
+    if h is None:
+        h = figure.history(figure.components(con))
     x = h.merge(con.sql(EXTRA_SQL).df(), on="run_id", how="left")
     x = x.sort_values(["horse_id", "race_date", "run_id"]).reset_index(drop=True)
     x["race_date"] = pd.to_datetime(x["race_date"])
@@ -351,11 +351,12 @@ def cost_coef(x, mask):
     return dict(zip(["settle", "pace", "gl"], b[:3]))
 
 
-def project(x, train_end, versions=("v2",), settle_fn=None):
+def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     """Fit on rows in [2019, train_end), predict all rows. Returns (x with OUT cols, race frame, extras).
-    settle_fn(x, train_end) -> projected settle per row, replacing the v3 settle model (e.g. projection_v4.settle)."""
+    settle_fn(x, train_end) -> projected settle per row, replacing the v3 settle model (e.g. projection_v4.settle).
+    inplace: add the columns to x itself instead of a copy (saves a full copy of the frame's memory)."""
     train_end = pd.Timestamp(train_end)
-    x = x.copy()
+    x = x if inplace else x.copy()
     tr = (x["race_date"] < train_end) & (x["race_date"] >= "2019-01-01")
     extras = {}
     m = tr & x["y_settle"].notna()

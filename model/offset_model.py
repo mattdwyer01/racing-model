@@ -13,6 +13,7 @@ Models (all per race, softmax over runners):
                           Features: ability + jt + field-relative versions + market context.
 Rounds for the GBM are picked on the last 20% of the training window (by date), then refitted on all of it.
 """
+import gc
 import sys
 from pathlib import Path
 
@@ -59,11 +60,13 @@ def build(con, train_end):
     return eval_set(build_features(con, train_end))
 
 
-def build_features(con, train_end, shared=None, light=False):
+def build_features(con, train_end, shared=None, light=False, lean=False):
     """Every model input for every run (no eval filter). Fitted pieces use data before train_end only.
     shared: dict with d, h, fr (ability.load, figure.history, projection.frame: none depend on train_end) to reuse
     across folds. light: skip figure v2 and the position map (not production inputs). The projected frame
-    (all runs, all projection columns) is kept in LAST_PX["full"] when shared is given."""
+    (all runs, all projection columns) is kept in LAST_PX["full"] when shared is given.
+    lean: low-memory path for the daily dashboard job (needs light, no shared/PX_KEEP): the projection frame is
+    modified in place and each big intermediate is released as soon as it has been used (~7 GB peak, not ~10)."""
     d = shared["d"] if shared else ability.load(con)
     h = shared["h"] if shared else figure.history(d)
     a = ability.features(d, ability.fit_coef(h, train_end))
@@ -75,6 +78,25 @@ def build_features(con, train_end, shared=None, light=False):
         FIG2_COEF[str(train_end)[:10]] = coef2
         extra += [c + "_v2" for c in ability.FIG_DEPENDENT]
     fr = shared["fr"] if shared else projection.frame(con, h)
+    if lean:
+        assert light and not shared and not PX_KEEP, "lean needs light and no shared / PX_KEEP"
+        projection.project(fr, train_end, inplace=True)
+        proj = fr[["run_id"] + PROJ].copy()
+        holder = [fr]
+        del fr
+        px4 = _extra_proj(con, holder, train_end) if EXTRA_PROJ else None
+        gc.collect()
+        xh = extra_history.features(con, d, train_end)
+        del d
+        e = h.merge(a[["run_id"] + extra], on="run_id") \
+            .merge(a[["run_id", "wpr"]].rename(columns={"wpr": "y_wpr"}), on="run_id")
+        del a, h
+        e = e.merge(jt.features(con), on="run_id", how="left").merge(proj, on="run_id", how="left") \
+            .merge(xh, on="run_id", how="left")
+        if px4 is not None:
+            e = e.merge(px4, on="run_id", how="left")
+        e[JT] = e[JT].fillna(0.0)
+        return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
     px, _, _ = projection.project(fr, train_end)
     if shared:
         LAST_PX["full"] = px
@@ -109,10 +131,13 @@ def build_features(con, train_end, shared=None, light=False):
 
 def _extra_proj(con, fr, train_end):
     """Projection outputs with the v4 settle model (suffix _v4) and projected GPS race pace (projection_gps.py
-    target, v3 pace inputs built on v4 settle), both fitted on races before train_end."""
+    target, v3 pace inputs built on v4 settle), both fitted on races before train_end.
+    fr may be a one-item list (lean path): the frame is then released as soon as the v4 frame is built."""
     from model import projection_gps, projection_v4
-    f4 = projection_v4.add_features(con, fr)
-    x4, r4, _ = projection.project(f4, train_end, settle_fn=projection_v4.settle)
+    lean = isinstance(fr, list)
+    f4 = projection_v4.add_features(con, fr.pop() if lean else fr)
+    gc.collect()
+    x4, r4, _ = projection.project(f4, train_end, settle_fn=projection_v4.settle, inplace=lean)
     del f4
     r4 = r4.join(projection_gps.gps_pace(con).rename("gps_pace"))
     m = (r4["race_date"] < pd.Timestamp(train_end)) & r4["gps_pace"].notna()

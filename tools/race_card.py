@@ -77,7 +77,7 @@ def score(con, train_end, dates, track=None):
     """Card rows for every VIC/SA/QLD race on `dates` with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
     om.EXTRA_PROJ, om.KEEP_SIM = True, True
-    raw = om.build_features(con, train_end)
+    raw = om.build_features(con, train_end, light="no_posmap", lean=True)
     m, _ = production.train(con, train_end, e=om.add_context(eval_set(raw)))
     info = con.sql(INFO_SQL.format(d=", ".join(f"date '{x}'" for x in dates))).df()
     if track:
