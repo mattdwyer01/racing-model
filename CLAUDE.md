@@ -121,6 +121,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     "without" deletes the rc rows of gps_runs): no effect anywhere. Model alone -0.0001 (-0.0006 to +0.0005), VIC
     +0.0001, SA -0.0006 n.s.; blend -0.0000. Kept (harmless, feeds the speed map / ground-loss display); it is in
     training already (projection y_gl and h_gl / h_rail read gps_runs, all sources).
+  - Carried weight real vs race average (`tools/rc_gps_test.py weights`, `weights_test.md`, 37,821 races, prodmu logit):
+    model alone -0.0029 (95% -0.0038 to -0.0021; every state and fold), blend -0.0002 (QLD -0.0005, VIC/SA 0.0000).
+    Weights matter: keep them filled (TAB race cards + TopRate weightHandicap).
+  - TopRate race_results_2026.csv.gz stopped at 13 Sep 2026 and kept PRELIMINARY WPRs for its last week (8 Sep
+    Muswellbrook 74.0 vs final ~62.5): TopRate PR 249 adds --refresh-preliminary and a daily run.
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,

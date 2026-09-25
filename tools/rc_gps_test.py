@@ -20,9 +20,10 @@ COLS = ["baseline: model logit", "baseline: blend logit", "prodmu: model logit",
 BOOT = 2000
 
 
-def main():
+def main(without="rcgps_without", out="rc_gps_test", title="racing.com (VIC/SA) GPS: with vs without",
+         what="the racing.com rows of gps_runs (ground-loss projection target, past ground-loss credit)"):
     w = pd.read_csv(ROOT / "reports/blend_per_race_rcgps_with.csv.gz", parse_dates=["race_date"])
-    o = pd.read_csv(ROOT / "reports/blend_per_race_rcgps_without.csv.gz", parse_dates=["race_date"])
+    o = pd.read_csv(ROOT / f"reports/blend_per_race_{without}.csv.gz", parse_dates=["race_date"])
     k = [c for c in KEY if c in w and c in o]
     d = w[k + COLS].merge(o[k + COLS], on=k, suffixes=(" with", " without")).dropna()
     rng = np.random.default_rng(0)
@@ -43,16 +44,22 @@ def main():
                         if not (c == "SP calibrated" and a == "without")}).T
     fold = pd.DataFrame({y: {c: (g[f"{c} with"] - g[f"{c} without"]).mean() for c in COLS[:4]}
                          for y, g in d.groupby("fold")}).T
-    L = ["# racing.com (VIC/SA) GPS: with vs without", "",
+    L = [f"# {title}", "",
          f"- {len(d):,} VIC/SA/QLD test races, folds 2023 to 2026 YTD, walk-forward (blend_eval, logit). The two runs "
-         "differ only in the racing.com rows of gps_runs (ground-loss projection target, past ground-loss credit).",
-         "- with minus without; negative = racing.com GPS helps. 95% race bootstrap.", "",
+         f"differ only in {what}.",
+         "- with minus without; negative = it helps. 95% race bootstrap.", "",
          "## Paired differences", "", pd.DataFrame(rows).to_markdown(index=False), "",
          "## By fold (all races)", "", fold.to_markdown(floatfmt="+.4f"), "",
          "## Log loss by state", "", lvl.to_markdown(floatfmt=".4f"), ""]
-    (ROOT / "reports/rc_gps_test.md").write_text("\n".join(L) + "\n")
+    (ROOT / f"reports/{out}.md").write_text("\n".join(L) + "\n")
     print("\n".join(L))
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if sys.argv[1:] == ["weights"]:     # carried weights vs every horse at the race average (weight_kg = 57)
+        main("noweights", "weights_test", "Carried weight: real vs race average",
+             "carried weight (the 'without' run sets runs.weight_kg = 57 for every run: weight vs field = 0, "
+             "sectional weight correction off)")
+    else:
+        main()
