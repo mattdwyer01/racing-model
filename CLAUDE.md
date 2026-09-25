@@ -138,6 +138,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     2/3 WPR proj + 1/3 TopRate rating): within 10 WPR holds 90% of winners (outside A/E 0.86, ROI -46%), within 4 WPR 58% in
     2.8 runners (A/E 1.04), within 5 WPR 64% (A/E 1.02), beyond 15 WPR 2%. Dashboard Combo stays on the WPR scale (user
     decision); lines at 10 and 4 WPR (TopRate PR #253).
+    Live Combo (our race-day adj + past ground loss in place of TopRate's speed_map / barrier; `combo_lines_test.py live`,
+    `combo_lines_live.md`, 695 races 22 Aug to 23 Sep): gap corr 0.990 with the tested Combo, ~5% of runners change
+    side of each line; within 10 holds 87% of winners (outside ROI -50%), within 4 holds 54% (A/E 1.01). Lines kept.
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
