@@ -229,10 +229,13 @@ def tracking(arch, res):
 
 
 def rescore(con, arch, since, today):
-    """Past races archived by a model trained on or after `since` (e.g. a model hit by a bug), re-projected with
+    """Past races (earlier days and today's started races) archived by a model trained on or after `since` (e.g. a
+    model hit by a bug or stale data), re-projected with
     one model trained before `since` (still pre-race). Market columns keep their archived pre-race fixed prices:
     the blend and edge are recomputed from those, never from SP or a post-race price."""
-    old = arch[(arch["train_end"].astype(str) >= since) & (arch["race_date"].dt.date < today)]
+    # past days, plus today's races that have already started (their archived projection is otherwise frozen)
+    done = (arch["race_date"].dt.date < today) | arch["race_id"].astype("int64").isin(_started_races(con))
+    old = arch[(arch["train_end"].astype(str) >= since) & done]
     if old.empty:
         return old
     days = sorted(old["race_date"].dt.date.unique())

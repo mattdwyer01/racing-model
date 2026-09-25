@@ -90,6 +90,15 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     1.9308 (+0.021, significant); with SP ours 1.8315 vs Combo 1.8333 (-0.0018 n.s.), ours vs SP -0.0031.
     Combo's lead is its TopRate rating share: that rating correlates 0.93 with log SP and alone scores 1.868 vs SP
     1.847, i.e. it behaves like a market price, not independent form.
+  - TopRate rating is LOOK-AHEAD in the runners file: its final value is rewritten after the jump (on 24 Sep the change
+    from the morning file correlated 0.33 with -log SP, winners +0.27 vs their race). Pre-race values from git history
+    (`tools/toprate_rating_snapshots.py`, 08:00 / 12:00 / 15:00 AEST, latest >= 10 min before the start;
+    `data/interim/toprate_rating_prerace.csv.gz`, 75% filled). Same 2,786 races (`rm_toprate_blend_test_prerace.md`):
+    TopRate rating alone 2.0909 (top pick 17%) vs 1.8824 with final values; Combo 1.9798 vs 1.9308; RM 1.9515 beats
+    Combo by 0.028. So the Combo comparison above and its "TopRate rating share" conclusion were look-ahead.
+    RM + pre-race TopRate rating (fitted): model alone -0.0080 (-0.0144 to -0.0015), with SP +0.0017 (-0.0005 to
+    +0.0039; VIC/SA +0.0041 significant, QLD -0.0006). Form factor adds nothing. Not adopted: blend not better and
+    worse in VIC/SA; final-value version (`rm_toprate_blend_test.md`) is invalid.
   - Combo with our race-day adj in place of TopRate's speed_map term (`tools/combo_swap_test.py`,
     `combo_swap_test.md`, 790 races 22 Aug to 23 Sep 2026, the only window with speed_map): no change (+0.0005
     alone, -0.0003 with SP, both n.s.; fitted weight no better). TopRate's own speed_map is worth +0.0011 n.s.
@@ -102,6 +111,21 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Gap-from-top lines for the dashboard table (4,061 VIC/SA/QLD races Apr to Sep 2026, OOS; gap WPR = 6.843 x
     ln(p_top / p)): within 4 WPR A/E at SP 1.08 (2.6 runners, 56% of winners); beyond 8 WPR A/E 0.86, ROI -43%
     (79% of winners inside). Stable Apr-Jul vs Aug-Sep. TopRate table shows 4 / 8 WPR lines (RaceDetail).
+  - Points clear of the next horse (`tools/clear_test.py`, `clear_test.md`, 70,291 races 2023 to Sep 2026, all
+    states, yearly retrain OOS): every gap band loses at SP (-5% to -20%). Price-matched A/E (vs all runners at the
+    same SP; plain normalised-SP A/E is inflated by favourite-longshot bias) 1.01-1.05 under 6 WPR, 1.08 at 6+.
+    Top pick not SP favourite and 6-8 clear: 672 races, A/E 1.20 (1.05-1.35), ROI +1.8% n.s. Similar in all states.
+    Also: missing carried weight from 14 Sep made the v1 figure fit NaN (every horse a debutant); fixed in
+    figure.figure / ability.fit_coef, past dashboard races rescored (`dashboard_export --rescore-from`).
+  - racing.com (VIC/SA) GPS with vs without (`tools/rc_gps_test.py`, `rc_gps_test.md`, 37,821 races, prodmu logit;
+    "without" deletes the rc rows of gps_runs): no effect anywhere. Model alone -0.0001 (-0.0006 to +0.0005), VIC
+    +0.0001, SA -0.0006 n.s.; blend -0.0000. Kept (harmless, feeds the speed map / ground-loss display); it is in
+    training already (projection y_gl and h_gl / h_rail read gps_runs, all sources).
+  - Carried weight real vs race average (`tools/rc_gps_test.py weights`, `weights_test.md`, 37,821 races, prodmu logit):
+    model alone -0.0029 (95% -0.0038 to -0.0021; every state and fold), blend -0.0002 (QLD -0.0005, VIC/SA 0.0000).
+    Weights matter: keep them filled (TAB race cards + TopRate weightHandicap).
+  - TopRate race_results_2026.csv.gz stopped at 13 Sep 2026 and kept PRELIMINARY WPRs for its last week (8 Sep
+    Muswellbrook 74.0 vs final ~62.5): TopRate PR 249 adds --refresh-preliminary and a daily run.
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
@@ -164,4 +188,4 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
 
 ## Next build step
 Stage B: v3 projection in the market-offset GBM; QLD-only vs all-state fits on QLD races.
-Then VIC/SA ground loss once the racing.com backfill is in the store.
+(VIC/SA racing.com GPS is in the store and in training: no measurable gain, `rc_gps_test.md`.)
