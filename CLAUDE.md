@@ -102,6 +102,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   - Gap-from-top lines for the dashboard table (4,061 VIC/SA/QLD races Apr to Sep 2026, OOS; gap WPR = 6.843 x
     ln(p_top / p)): within 4 WPR A/E at SP 1.08 (2.6 runners, 56% of winners); beyond 8 WPR A/E 0.86, ROI -43%
     (79% of winners inside). Stable Apr-Jul vs Aug-Sep. TopRate table shows 4 / 8 WPR lines (RaceDetail).
+  - Points clear of the next horse (`tools/clear_test.py`, `clear_test.md`, 70,291 races 2023 to Sep 2026, all
+    states, yearly retrain OOS): every gap band loses at SP (-5% to -20%). Price-matched A/E (vs all runners at the
+    same SP; plain normalised-SP A/E is inflated by favourite-longshot bias) 1.01-1.05 under 6 WPR, 1.08 at 6+.
+    Top pick not SP favourite and 6-8 clear: 672 races, A/E 1.20 (1.05-1.35), ROI +1.8% n.s. Similar in all states.
+    Also: missing carried weight from 14 Sep made the v1 figure fit NaN (every horse a debutant); fixed in
+    figure.figure / ability.fit_coef, past dashboard races rescored (`dashboard_export --rescore-from`).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
