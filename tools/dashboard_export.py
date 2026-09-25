@@ -186,6 +186,7 @@ def write_toprate(dest, rows, m, track):
             races[rid] = {"pace": pace if None not in pace else None, "pv": f(x.get("pace vs distance avg")),
                           "on": str(x.get("scored_on"))[:10], "bias": bias.get(int(x["race_id"]))}
     payload = {"generated": dt.datetime.now(dt.timezone.utc).isoformat()[:19] + "Z", "trainEnd": str(m["train_end"])[:10],
+               "health": m.get("health"),
                "a": float(m["a"]), "b": float(m["b"]), "posFlagThreshold": f(m.get("pos_flag_thr")),
                "races": races, "runners": runners,
                "tracking": track.get("total")}
