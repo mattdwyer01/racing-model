@@ -85,7 +85,7 @@ def main():
                          and l.date between date '{START}' and date '{END}'""").df()
     pre = pd.read_csv(ROOT / "data/interim/toprate_prerace_aug.csv.gz", dtype={"run_id": str})
     adj = gps_scores(con)
-    d = live.merge(pre, on="run_id", how="inner").merge(adj, on="run_id", how="inner")
+    d = live.merge(pre.drop(columns=["race_id"], errors="ignore"), on="run_id", how="inner").merge(adj, on="run_id", how="inner")
     d = d[(d["sp"] > 1) & d["proj_pre"].notna()]
     full = live.groupby("race_id").size()
     ok = d.groupby("race_id").agg(n=("run_id", "size"), w=("fp", lambda s: (s == 1).sum()))

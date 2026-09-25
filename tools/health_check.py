@@ -67,7 +67,9 @@ def main():
         old = d[d["date"] <= (now.date() - dt.timedelta(days=7)).isoformat()]
         old = old[old["date"] >= (now.date() - dt.timedelta(days=60)).isoformat()]
         share = (old["wprStatus"].astype(str).str.lower() == "preliminary").mean() if len(old) else 0.0
-        check("results_final", share <= 0.02, f"{share:.1%} of runs 7 to 60 days old still Preliminary (limit 2%)")
+        # about 5% of rows stay Preliminary for good (TopRate never finalises some meetings: a refetch of every
+        # 2023-2026 Preliminary row on 25 Sep 2026 returned identical WPRs); a stale file runs far above 10%
+        check("results_final", share <= 0.10, f"{share:.1%} of runs 7 to 60 days old still Preliminary (limit 10%)")
 
     def runners_checks():
         d = pd.read_csv(io.BytesIO(get("toprate_runners.csv")), low_memory=False, dtype=str, keep_default_na=False,
