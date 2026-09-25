@@ -134,6 +134,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     Weights matter: keep them filled (TAB race cards + TopRate weightHandicap).
   - TopRate race_results_2026.csv.gz stopped at 13 Sep 2026 and kept PRELIMINARY WPRs for its last week (8 Sep
     Muswellbrook 74.0 vs final ~62.5): TopRate PR 249 adds --refresh-preliminary and a daily run.
+  - Combo lines (`tools/combo_lines_test.py`, `combo_lines_test.md`, 1,027 races Apr to Sep 2026, pre-race values, Combo =
+    2/3 WPR proj + 1/3 TopRate rating): within 10 WPR holds 90% of winners (outside A/E 0.86, ROI -46%), within 4 WPR 58% in
+    2.8 runners (A/E 1.04), within 5 WPR 64% (A/E 1.02), beyond 15 WPR 2%. Dashboard Combo now on the TopRate rating
+    scale (1 WPR = 0.259 TR): lines at 2.6 and 1.0 TR points (TopRate PR #252).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
