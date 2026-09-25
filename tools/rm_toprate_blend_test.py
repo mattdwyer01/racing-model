@@ -1,7 +1,12 @@
 """Racing Model rating blended with TopRate's rating and form factor (TopRate's Combo with our rating in place
 of its WPR projection).
 
-    python -W ignore tools/rm_toprate_blend_test.py      # -> reports/rm_toprate_blend_test.md
+    python -W ignore tools/rm_toprate_blend_test.py            # -> reports/rm_toprate_blend_test.md
+    python -W ignore tools/rm_toprate_blend_test.py --prerace  # -> reports/rm_toprate_blend_test_prerace.md
+
+--prerace: TopRate rating and form factor as they stood before each race (tools/toprate_rating_snapshots.py,
+git history of the runners file), not the runners file's final values, which follow the market to the jump
+and beyond. Same races either way.
 
 Same races and out-of-sample Racing Model scores as tools/compare_toprate_combo.py (VIC/SA/QLD, 26 Apr 2026 on,
 monthly retrain). Racing Model rating on the WPR scale = 6.843 x log model probability (+ a per-race constant,
@@ -12,6 +17,7 @@ which drops out). Variants:
              flags), fitted on one half of the dates and tested on the other (swapped)
 Each alone and with log SP. Race bootstrap 95% ranges on the paired log loss differences.
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -30,6 +36,9 @@ BOOT = 2000
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--prerace", action="store_true")
+    a = ap.parse_args()
     con = duckdb.connect(str(figure.DB), read_only=True)
     live = con.sql("""select l.run_id, l.race_id, l.date race_date, l.state, l.finish_position fp,
                              l.starting_price_sp sp, l.wprp_proj, l.toprate_rating, l.pfm_score
@@ -39,6 +48,11 @@ def main():
     sc = pd.read_csv(ctc.OUT)
     d = live.merge(sc[["run_id", "model %"]], on="run_id", how="inner")
     d = d[d["sp"] > 1]
+    if a.prerace:
+        pre = pd.read_csv(ROOT / "data/interim/toprate_rating_prerace.csv.gz", dtype={"run_id": str})
+        d["run_id"] = d["run_id"].astype(str)
+        d = d.merge(pre[["run_id", "trr_pre", "pfm_pre"]], on="run_id", how="left")
+        d["toprate_rating"], d["pfm_score"] = d["trr_pre"], d["pfm_pre"]
     d["combo"] = ctc.combo(d)
     ok = d.groupby("race_id").agg(n=("run_id", "size"), w=("fp", lambda s: (s == 1).sum()),
                                   m=("model %", lambda s: s.notna().all()), c=("combo", lambda s: s.notna().all()))
@@ -93,13 +107,13 @@ def main():
     qld = st == "QLD"
     prs = [{"first": a, "minus": b, "all": ci(L[a] - L[b]), "QLD": ci((L[a] - L[b])[qld]),
             "VIC/SA": ci((L[a] - L[b])[~qld])} for a, b in pairs]
-    Lines = ["# Racing Model + TopRate rating + form factor", "",
+    Lines = ["# Racing Model + TopRate rating + form factor" + (" (pre-race TopRate values)" if a.prerace else ""), "",
              f"- {int(w.sum()):,} VIC/SA/QLD races, {d['race_date'].min():%d %b} to {d['race_date'].max():%d %b %Y}; "
              "Racing Model out of sample (monthly retrain). Fitted blends: conditional logit, half-window swap.",
              "", "## Log loss and top pick", "", pd.DataFrame(rows).to_markdown(index=False, floatfmt=".4f"), "",
              "## Paired differences (negative = first is better; 95% race bootstrap)", "",
              pd.DataFrame(prs).to_markdown(index=False), ""]
-    (ROOT / "reports/rm_toprate_blend_test.md").write_text("\n".join(Lines) + "\n")
+    (ROOT / f"reports/rm_toprate_blend_test{'_prerace' if a.prerace else ''}.md").write_text("\n".join(Lines) + "\n")
     print("\n".join(Lines))
 
 

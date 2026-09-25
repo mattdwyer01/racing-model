@@ -90,10 +90,15 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     1.9308 (+0.021, significant); with SP ours 1.8315 vs Combo 1.8333 (-0.0018 n.s.), ours vs SP -0.0031.
     Combo's lead is its TopRate rating share: that rating correlates 0.93 with log SP and alone scores 1.868 vs SP
     1.847, i.e. it behaves like a market price, not independent form.
-  - Racing Model + TopRate rating + form factor (`tools/rm_toprate_blend_test.py`, `rm_toprate_blend_test.md`, same
-    2,786 races): fitted blend without SP 1.8664 (top pick 30.9%) vs RM 1.9515 / Combo 1.9308 / TopRate rating alone
-    1.8824, all from the TopRate rating (form factor adds nothing, +0.0038 alone). With SP: +0.0007 vs RM + SP (n.s.),
-    TopRate rating + form factor add 0.0000 over SP. Not adopted: the TopRate rating is a market proxy.
+  - TopRate rating is LOOK-AHEAD in the runners file: its final value is rewritten after the jump (on 24 Sep the change
+    from the morning file correlated 0.33 with -log SP, winners +0.27 vs their race). Pre-race values from git history
+    (`tools/toprate_rating_snapshots.py`, 08:00 / 12:00 / 15:00 AEST, latest >= 10 min before the start;
+    `data/interim/toprate_rating_prerace.csv.gz`, 75% filled). Same 2,786 races (`rm_toprate_blend_test_prerace.md`):
+    TopRate rating alone 2.0909 (top pick 17%) vs 1.8824 with final values; Combo 1.9798 vs 1.9308; RM 1.9515 beats
+    Combo by 0.028. So the Combo comparison above and its "TopRate rating share" conclusion were look-ahead.
+    RM + pre-race TopRate rating (fitted): model alone -0.0080 (-0.0144 to -0.0015), with SP +0.0017 (-0.0005 to
+    +0.0039; VIC/SA +0.0041 significant, QLD -0.0006). Form factor adds nothing. Not adopted: blend not better and
+    worse in VIC/SA; final-value version (`rm_toprate_blend_test.md`) is invalid.
   - Combo with our race-day adj in place of TopRate's speed_map term (`tools/combo_swap_test.py`,
     `combo_swap_test.md`, 790 races 22 Aug to 23 Sep 2026, the only window with speed_map): no change (+0.0005
     alone, -0.0003 with SP, both n.s.; fitted weight no better). TopRate's own speed_map is worth +0.0011 n.s.
