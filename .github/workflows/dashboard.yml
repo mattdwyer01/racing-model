@@ -16,6 +16,11 @@ on:
     - cron: "15 0-7 * * *"    # hourly 10:15 to 17:15 AEST: scratchings, jockey changes, TAB weights, going
     # (GitHub starts scheduled runs late at busy times; concurrency below queues them, never overlapping)
   workflow_dispatch:
+    inputs:
+      rescore_from:
+        description: "YYYY-MM-DD: re-project past races archived by a model trained on or after this date"
+        required: false
+        default: ""
 
 permissions:
   contents: write              # data store (release assets)
@@ -61,7 +66,8 @@ jobs:
       - name: Score races and write racing_model.json
         env:
           RACING_SPEEDMAP: v4          # full v4 settle speed map (9.3 GB peak with 5-state training)
-        run: python -W ignore tools/dashboard_export.py --toprate-dir toprate
+          RESCORE_FROM: ${{ github.event.inputs.rescore_from }}
+        run: python -W ignore tools/dashboard_export.py --toprate-dir toprate ${RESCORE_FROM:+--rescore-from "$RESCORE_FROM"}
 
       - name: Commit to TopRate
         working-directory: toprate
