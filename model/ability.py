@@ -67,7 +67,8 @@ def load(con):
 
 def fit_coef(h, train_end):
     e = eval_set(h)
-    tr = e[e.race_date < train_end]
+    # no carried weight from 14 Sep 2026 = race average; one NaN would make every weight (and figure) NaN
+    tr = e[e.race_date < train_end].fillna({"wt_rel_today": 0.0})
     _, b = fit_eval(tr, tr.iloc[:0], FIG)
     comps = ["s_early", "s_l600", "wt_rel", "settle", "shape", "pace"]
     return {"wpr": 1.0, **{c: float(b["h_" + c] / b["h_wpr"]) for c in comps}}

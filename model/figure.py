@@ -127,9 +127,11 @@ def history(d, half_life_runs=HALF_LIFE_RUNS, half_life_days=HALF_LIFE_DAYS, k=K
 
 
 def figure(d, coef):
-    """Per-run figure from components and fitted weights {component: c_j} (wpr weight = 1)."""
+    """Per-run figure from components and fitted weights {component: c_j} (wpr weight = 1).
+    A missing weight (TopRate results carry none from 14 Sep 2026) counts as the race average: WPR is already
+    weight adjusted, only the sectional part loses its weight correction."""
     f = d["wpr"].copy()
     for c, v in coef.items():
         if c != "wpr":
-            f = f + v * d[c]
+            f = f + v * (d[c].fillna(0) if c == "wt_rel" else d[c])
     return f
