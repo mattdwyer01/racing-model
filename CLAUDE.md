@@ -102,6 +102,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     RM + pre-race TopRate rating (fitted): model alone -0.0080 (-0.0144 to -0.0015), with SP +0.0017 (-0.0005 to
     +0.0039; VIC/SA +0.0041 significant, QLD -0.0006). Form factor adds nothing. Not adopted: blend not better and
     worse in VIC/SA; final-value version (`rm_toprate_blend_test.md`) is invalid.
+  - Combo redesign on PRE-RACE TopRate values (`tools/combo_redesign_test.py`, `combo_redesign_test.md`, 22 Aug to
+    23 Sep 2026, ~790 races): our race-day adj in place of TopRate's speed_map + track_barrier +0.0006 (n.s.), + GPS
+    past ground loss +0.0007, + position value +0.0011 (all n.s., with SP too). Dropping the form factor -0.019 alone
+    (significant), +0.0026 with SP (n.s.): ADOPTED in TopRate (Combo = 2/3 WPR projection + 1/3 TopRate rating).
+    Combo + SP is worse than SP here (+0.0092). Dashboard now shows Combo (user decision) with our adjustments.
   - Combo with our race-day adj in place of TopRate's speed_map term (`tools/combo_swap_test.py`,
     `combo_swap_test.md`, 790 races 22 Aug to 23 Sep 2026, the only window with speed_map): no change (+0.0005
     alone, -0.0003 with SP, both n.s.; fitted weight no better). TopRate's own speed_map is worth +0.0011 n.s.
