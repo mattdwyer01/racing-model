@@ -228,12 +228,40 @@ def tracking(arch, res):
                                     "top_rated_won": float(top_won.mean())}}
 
 
+def rescore(con, arch, since, today):
+    """Past races archived by a model trained on or after `since` (e.g. a model hit by a bug), re-projected with
+    one model trained before `since` (still pre-race). Market columns keep their archived pre-race fixed prices:
+    the blend and edge are recomputed from those, never from SP or a post-race price."""
+    old = arch[(arch["train_end"].astype(str) >= since) & (arch["race_date"].dt.date < today)]
+    if old.empty:
+        return old
+    days = sorted(old["race_date"].dt.date.unique())
+    c, m = race_card.score(con, since, [str(d) for d in days])
+    c = c[c["run_id"].isin(old["run_id"])].copy()
+    if c.empty:
+        return c
+    o = old.set_index("run_id")
+    for k in ["fixed_win_price", "open_price"]:
+        c[k] = pd.to_numeric(c["run_id"].map(o[k]), errors="coerce")
+    inv = 1 / c["fixed_win_price"].where(c["fixed_win_price"] > 1)
+    full = inv.notna().groupby(c["race_id"]).transform("all")
+    s = m["a"] * np.log((c["model %"] / 100).clip(1e-12)) + m["b"] * np.log(inv / inv.groupby(c["race_id"]).transform("sum"))
+    e = np.exp(s - s.groupby(c["race_id"]).transform("max"))
+    pb = (e / e.groupby(c["race_id"]).transform("sum")).where(full)
+    c["blend %"], c["blend $"] = 100 * pb, 1 / pb
+    c["edge vs fixed"] = pb * c["fixed_win_price"] - 1
+    print(f"rescored {len(c):,} runners on {len(days)} days (archived with train_end >= {since})", flush=True)
+    return _archive_rows(c, m, since)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None)
     ap.add_argument("--no-store", action="store_true")
     ap.add_argument("--toprate-dir", default=None, help="write racing_model.json here (a TopRate checkout)")
     ap.add_argument("--site-dir", default=None, help="also write the per-day JSON for a static site")
+    ap.add_argument("--rescore-from", default=None,
+                    help="YYYY-MM-DD: re-project past races archived by a model trained on or after this date")
     a = ap.parse_args()
     today = dt.date.fromisoformat(a.date) if a.date else dt.datetime.now(ZoneInfo("Australia/Melbourne")).date()
     con = duckdb.connect(str(figure.DB), read_only=True)
@@ -245,6 +273,10 @@ def main():
     arch = pd.read_csv(ARCHIVE, parse_dates=["race_date"]) if ARCHIVE.exists() else pd.DataFrame(columns=KEEP)
     arch["race_date"] = pd.to_datetime(arch["race_date"])   # an empty archive reads as object dtype
 
+    if a.rescore_from:
+        fixed = rescore(con, arch, a.rescore_from, today)
+        fixed["race_date"] = pd.to_datetime(fixed["race_date"])
+        arch = pd.concat([arch[~arch["run_id"].isin(fixed["run_id"])], fixed], ignore_index=True)
     c, m = race_card.score(con, str(today), [str(d) for d in upcoming])
     new = _archive_rows(c, m, today)
     missing = _missing_days(con, arch, recent)
