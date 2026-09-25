@@ -108,6 +108,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     Top pick not SP favourite and 6-8 clear: 672 races, A/E 1.20 (1.05-1.35), ROI +1.8% n.s. Similar in all states.
     Also: missing carried weight from 14 Sep made the v1 figure fit NaN (every horse a debutant); fixed in
     figure.figure / ability.fit_coef, past dashboard races rescored (`dashboard_export --rescore-from`).
+  - racing.com (VIC/SA) GPS with vs without (`tools/rc_gps_test.py`, `rc_gps_test.md`, 37,821 races, prodmu logit;
+    "without" deletes the rc rows of gps_runs): no effect anywhere. Model alone -0.0001 (-0.0006 to +0.0005), VIC
+    +0.0001, SA -0.0006 n.s.; blend -0.0000. Kept (harmless, feeds the speed map / ground-loss display); it is in
+    training already (projection y_gl and h_gl / h_rail read gps_runs, all sources).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
@@ -170,4 +174,4 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
 
 ## Next build step
 Stage B: v3 projection in the market-offset GBM; QLD-only vs all-state fits on QLD races.
-Then VIC/SA ground loss once the racing.com backfill is in the store.
+(VIC/SA racing.com GPS is in the store and in training: no measurable gain, `rc_gps_test.md`.)
