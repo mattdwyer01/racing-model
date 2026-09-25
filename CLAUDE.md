@@ -40,6 +40,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   `DATA_REPO` (private, e.g. `mattdwyer01/racing-data`) with secret `DATA_TOKEN`; falls back to this repo.
   `python pipeline/store.py migrate mattdwyer01/racing-model` copies the old store across.
 - `gps_daily.yml` (06:00 AEST), `gps_backfill.yml` (manual), `tab_price_archive.yml` (Vultr runner).
+- `health_check.yml` (07:15 and 13:30 AEST): `tools/health_check.py` checks the served files (results fresh / final,
+  weights, racing_model.json fresh + model self-check `health` from `race_card.model_health`, payload fresh / split /
+  weights, race-day adjustments). Fails the job and opens / comments on a "Data health" issue.
 - My workspace and GitHub-hosted runners may be blocked by TAB (confirmed) and possibly RQ / racing.com;
   set repo variable `SCRAPER_RUNNER=vultr-au` to move scraping to the Vultr self-hosted runner.
 

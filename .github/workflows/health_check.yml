@@ -1,0 +1,40 @@
+name: Data health check
+
+# Checks what the dashboard actually serves (TopRate results / runners files, racing_model.json, toprate_data.json)
+# and fails loudly: a failed run emails the repo owner (GitHub's default for failed workflows) and opens (or comments
+# on) a "Data health" issue with the report. See tools/health_check.py for the checks and the failures behind them.
+
+on:
+  schedule:
+    - cron: "15 21 * * *"     # 07:15 AEST: after the overnight results refresh, the morning pulls and dashboard build
+    - cron: "30 3 * * *"      # 13:30 AEST: mid racing day (live results, prices, weights)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas requests
+      - name: Run checks
+        id: run
+        run: python tools/health_check.py --report health.md
+      - name: Open or update the Data health issue
+        if: failure() && steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          n=$(gh issue list --state open --search "Data health in:title" --json number --jq '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file health.md
+          else
+            gh issue create --title "Data health check failing" --body-file health.md
+          fi

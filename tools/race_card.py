@@ -78,6 +78,21 @@ def speed_map(rows, date):
     return out
 
 
+def model_health(raw, rows, train_end):
+    """Sanity numbers for tools/health_check.py (written into racing_model.json). Each would have caught a real
+    failure: the v1 figure fit going NaN when a carried weight was missing (every horse scored as a debutant, 25 Sep
+    2026) shows as dm_zero_share ~1 and debut_trial_on_runners > 0."""
+    recent = raw[(raw["race_date"] < train_end) & (raw["race_date"] >= pd.Timestamp(train_end) - pd.Timedelta(days=60))]
+    has_hist = recent["h_none"] == 0
+    out = {"dm_zero_share": float((recent.loc[has_hist, "dm"] == 0).mean()) if has_hist.any() else None,
+           "debut_trial_on_runners": float(((recent["trial_pos_debut"] != 0) & has_hist).mean()),
+           "card_runners": int(len(rows))}
+    if len(rows):
+        out["card_no_weight_share"] = float(rows["wt_rel_today"].isna().mean()) if "wt_rel_today" in rows else None
+        out["card_h_none_share"] = float((rows["h_none"] == 1).mean())
+    return {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
+
+
 def score(con, train_end, dates, track=None):
     """Card rows for every in-scope race on `dates` (all states, production.CARD_ALL_STATES) with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
@@ -93,6 +108,10 @@ def score(con, train_end, dates, track=None):
     if rows.empty:
         return pd.DataFrame(), m
     rows = rows.merge(info[["run_id", "fixed_win_price", "open_price"]], on="run_id", how="left")
+    try:
+        m["health"] = model_health(raw, rows, train_end)
+    except Exception as e:          # the health numbers must never break a card / dashboard build
+        m["health"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
     pr = prep(rows)
     c = production.card(m, pr, market="log_p_mkt").merge(info, on=["run_id", "race_id"])
     c = c.merge(pr[["run_id", "race_date", "h_wpr", "h_none", "proj_gl_v4"] + [f for f in POS_FEATS if f in pr]],
