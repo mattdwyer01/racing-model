@@ -175,8 +175,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     over SP + adj: beta right sign, -0.0001 n.s. Staying races (1701m+) favour back-markers (+0.69). Tracks: actual
     vs model slope corr 0.84 (split-half 0.53); model much more pro-leader than results at Townsville, Mackay,
     Longreach, Thangool, Emerald; Flemington, Mornington, Morphettville, Eagle Farm, Sunshine Coast favour
-    back-markers. Next: settle x proj_shape in the production logit (the logit has no pace term: proj_pace
-    -0.05, proj_shape 0 WPR per unit).
+    back-markers. The production logit has no pace term of its own (proj_pace -0.05, proj_shape 0 WPR per unit).
+  - Settle x race shape in the production logit (`blend_eval.py --variants prodmu shape shape-pace shape-dist
+    --logit-only --tag shape`, `blend_eval_shape.md`, 37,821 races): sx_pace = settle vs race mean x proj_shape,
+    sx_dist = same x log(dist / 1200). Model alone -0.0001 (-0.0002 to +0.0001; QLD -0.0002 n.s.), blend 0.0000
+    (QLD -0.00004). Distance term adds nothing. Not adopted: proj_adj already carries the pace gradient, and the
+    rest of pace is not forecastable from pre-race data (R2 0.11).
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
