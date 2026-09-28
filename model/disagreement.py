@@ -3,6 +3,8 @@
     python model/disagreement.py      # -> reports/disagreement.md
     python model/disagreement.py --prod2   # base = prod2 (production + v4 settle + GPS pace + figure v2 +
                                            # rating mu) -> reports/disagreement_prod2.md
+    python model/disagreement.py --lv      # base = production (rating mu + leader value); factor = projected
+                                           # leader value (lv_x) -> reports/disagreement_lv.md
 
 Factors (vs the production logit, model/production.py COLS):
   jockey/trainer   production without the jockey/trainer inputs vs production
@@ -63,6 +65,12 @@ if PROD2:
     }
 
 
+LV = "--lv" in sys.argv
+if LV:
+    C_LV = list(dict.fromkeys(production.COLS + production.MU))
+    FACTORS = {"leader value": ([c for c in C_LV if c != "lv_x"], C_LV)}
+
+
 def _add_mu(fit_rows, *frames):
     """Rating model (rating.py) fitted on fit_rows; r_mu (vs field) and r_sigma added to each frame."""
     from model import rating
@@ -88,7 +96,8 @@ def blend_probs(inner, bl, tr, te, cols):
     return om._softmax(a * np.log(p) + b * te["log_p_sp"].to_numpy(float), te["race"].to_numpy())
 
 
-CKPT = ROOT / ("data/interim/disagreement_prod2" if "--prod2" in sys.argv else "data/interim/disagreement")
+CKPT = ROOT / ("data/interim/disagreement_prod2" if "--prod2" in sys.argv else
+              "data/interim/disagreement_lv" if "--lv" in sys.argv else "data/interim/disagreement")
 
 
 def run():
@@ -110,7 +119,7 @@ def run():
         assert tr.race_date.max() < te.race_date.min()
         cut = tr["race_date"].quantile(0.75)
         inner, bl = _race(tr[tr.race_date <= cut].copy()), _race(tr[tr.race_date > cut].copy())
-        if PROD2:          # rating mu: fitted on the first 75% for the blend window, on all training rows for Y
+        if PROD2 or LV:    # rating mu: fitted on the first 75% for the blend window, on all training rows for Y
             inner, bl = _add_mu(inner, inner, bl)
             tr, te = _add_mu(tr, tr, te)
         c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
@@ -156,7 +165,7 @@ def group_stats(g, ctrl_roi, rng):
 
 def main():
     d = run()
-    suffix = "_prod2" if PROD2 else ""
+    suffix = "_prod2" if PROD2 else "_lv" if LV else ""
     d.to_csv(ROOT / f"reports/disagreement_per_runner{suffix}.csv.gz", index=False, float_format="%.6f")
     rng = np.random.default_rng(0)
     d["band"] = pd.cut(d["sp"], PRICE_BANDS)
@@ -176,7 +185,8 @@ def main():
                 rows.append({"factor": name, "group": side, "races": st,
                              "shift (median d)": float(np.median(x[m & sm])), **group_stats(g, None, rng)})
     t = pd.DataFrame(rows)
-    L = ["# Disagreement test" + (" (base model: prod2)" if PROD2 else ""), "",
+    L = ["# Disagreement test" + (" (base model: prod2)" if PROD2 else " (base model: production with leader value)"
+                                  if LV else ""), "",
          "- Per factor: runners whose out-of-sample blended probability moves most when the factor is added (d = log p_with"
          " - log p_without), 2023 to 2026 test years, VIC/SA/QLD",
          "- A/E SP = wins / SP-implied wins; A/E cal = wins / calibrated-SP wins (removes the favourite-longshot bias)",
