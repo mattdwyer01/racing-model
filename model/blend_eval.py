@@ -28,6 +28,7 @@ Variants (added inputs on top of the baseline):
   shape     prodmu + projected settle (vs the race mean) x projected early shape and x log(distance / 1200)
             (tools/pace_leader_test.py: forward runners lose value in races projected fast and in staying races);
             shape-pace / shape-dist leave one term out
+  lv        prodmu + projected leader value x settle (model/leader_value.py, tools/pace_forecast_test.py)
 """
 import argparse
 import sys
@@ -57,6 +58,8 @@ PARTS = {"prod2": P2, **{f"prod2-{k}": P2 - {k} for k in sorted(P2)}}
 EXTRA.update({v: extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] for v in PARTS})
 SHAPE = {"shape": ["sx_pace", "sx_dist"], "shape-pace": ["sx_dist"], "shape-dist": ["sx_pace"]}
 EXTRA.update({v: EXTRA["prodmu"] + c for v, c in SHAPE.items()})
+SHAPE["lv"] = ["lv_x"]                       # same prodmu fit path
+EXTRA["lv"] = EXTRA["prodmu"] + ["lv_x"]
 MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
 
 
@@ -217,6 +220,7 @@ def main():
     LOGIT_ONLY = args.logit_only
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
+    om.LEADER_VALUE = "lv" in variants
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
     per_race_file, wts_file = ROOT / f"reports/blend_per_race{suffix}.csv.gz", ROOT / f"reports/blend_weights{suffix}.csv"

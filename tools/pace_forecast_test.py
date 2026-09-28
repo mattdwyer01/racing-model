@@ -35,8 +35,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import figure, projection  # noqa: E402
-from model.projection import K, PACE_X, _fit, _lags, _r2  # noqa: E402
+from model import figure, leader_value, projection  # noqa: E402
+from model.projection import PACE_X, _fit, _r2  # noqa: E402
 from model.projection_gps import gps_pace  # noqa: E402
 
 CACHE = ROOT / "data/interim/pace_forecast_races.parquet"
@@ -45,87 +45,10 @@ OUT = ROOT / "reports/pace_forecast_test.md"
 FOLDS = [2023, 2024, 2025, 2026]
 BOOT = 1000
 rng = np.random.default_rng(11)
-NEW = ["es_1", "es_2", "es_gap", "n_es_close", "lead_sum", "lead_max", "lead_2nd", "fwd_sum", "led_early_max",
-       "led_early_2nd", "front3_shape_hist", "front3_lead", "front3_jfwd", "fast_bar", "fast_jfwd",
-       "class_level", "maiden", "te_td_shape", "te_track_shape", "te_td_lv", "rail_m"]
-CLASS_SQL = "select race_id, class_level, (class_type ilike '%maiden%')::double maiden, res_shape_mid y_mid from races"
-
-
-def decayed(x, v, mask=None):
-    """Decayed mean over the horse's last K runs of column v (optionally only runs where mask col is true)."""
-    a = _lags(x, v)
-    ok = ~np.isnan(a)
-    if mask is not None:
-        ok &= _lags(x, mask) == 1
-    w = np.where(ok, 0.5 ** (np.arange(K) / 3.0), 0)
-    return np.where(ok.any(1), (w * np.nan_to_num(a)).sum(1) / np.maximum(w.sum(1), 1e-9), np.nan), ok.sum(1)
-
-
-def horse_history(x):
-    x["_led"] = (x["y_settle"] == 0).astype(float).where(x["y_settle"].notna())
-    x["_fwd"] = (x["y_settle"] <= 0.2).astype(float).where(x["y_settle"].notna())
-    x["hp_lead_rate"], n = decayed(x, "_led")
-    x["hp_fwd_rate"], _ = decayed(x, "_fwd")
-    x["hp_led_early"], _ = decayed(x, "y_lead_early", "_led")
-    x["hp_shape_fwd"], _ = decayed(x, "y_shape", "_fwd")
-    x["hp_n"] = n
-    return x.drop(columns=["_led", "_fwd"])
-
-
-def target_enc(r, key, col, lam):
-    """Past mean of col per key, strictly earlier dates, shrunk to 0 with lam pseudo-races."""
-    t = r[[*key, "race_date", col]].dropna(subset=[col])
-    g = t.groupby([*key, "race_date"])[col].agg(["sum", "count"]).reset_index().sort_values("race_date")
-    cs = g.groupby(key)[["sum", "count"]].cumsum() - g[["sum", "count"]].to_numpy()
-    g["te"] = cs["sum"] / (cs["count"] + lam)
-    return r[[*key, "race_date"]].merge(g[[*key, "race_date", "te"]], on=[*key, "race_date"], how="left")["te"].to_numpy()
-
-
-def race_features(x, r):
-    """NEW race-level inputs from runner rows x (with proj_settle) onto race frame r (index race_id)."""
-    x = x[["race_id", "proj_settle", "es_today", "hp_lead_rate", "hp_fwd_rate", "hp_led_early", "hp_shape_fwd",
-           "jockey_fwd", "barrier_pct"]].copy()
-    g = x.groupby("race_id")
-    es = x.sort_values(["race_id", "es_today"], ascending=[True, False])
-    top = es.groupby("race_id").head(2)
-    rk = top.groupby("race_id").cumcount()
-    f = pd.DataFrame(index=r.index)
-    f["es_1"] = top[rk == 0].set_index("race_id")["es_today"]
-    f["es_2"] = top[rk == 1].set_index("race_id")["es_today"]
-    f["es_gap"] = f["es_1"] - f["es_2"]
-    x["_close"] = (x["es_today"] >= x["race_id"].map(f["es_1"]) - 1.5).astype(float)
-    f["n_es_close"] = x.groupby("race_id")["_close"].sum()
-    fast = es.groupby("race_id").head(1).set_index("race_id")
-    f["fast_bar"], f["fast_jfwd"] = fast["barrier_pct"], fast["jockey_fwd"]
-    lr = x["hp_lead_rate"].fillna(0)
-    f["lead_sum"] = lr.groupby(x["race_id"]).sum()
-    s = x.assign(_lr=lr).sort_values(["race_id", "_lr"], ascending=[True, False])
-    rk = s.groupby("race_id").cumcount()
-    f["lead_max"] = s[rk == 0].set_index("race_id")["_lr"]
-    f["lead_2nd"] = s[rk == 1].set_index("race_id")["_lr"]
-    f["fwd_sum"] = x["hp_fwd_rate"].fillna(0).groupby(x["race_id"]).sum()
-    s = x.dropna(subset=["hp_led_early"]).sort_values(["race_id", "hp_led_early"], ascending=[True, False])
-    rk = s.groupby("race_id").cumcount()
-    f["led_early_max"] = s[rk == 0].set_index("race_id")["hp_led_early"]
-    f["led_early_2nd"] = s[rk == 1].set_index("race_id")["hp_led_early"]
-    fr = x.sort_values(["race_id", "proj_settle"]).groupby("race_id").head(3).groupby("race_id")
-    f["front3_shape_hist"] = fr["hp_shape_fwd"].mean()
-    f["front3_lead"] = fr["hp_lead_rate"].mean()
-    f["front3_jfwd"] = fr["jockey_fwd"].mean()
-    for c in f.columns:
-        r[c] = f[c]
-    return r
-
-
-def race_lv(x, col="proj_settle"):
-    """Per race: within-race slope of perf on col and its weight (sum of squared deviations)."""
-    t = x[(x["h_none"] == 0) & x["wpr"].notna()][["race_id", col, "wpr", "h_wpr"]].copy()
-    t["perf"] = t["wpr"] - t["h_wpr"]
-    t = t[t.groupby("race_id")["perf"].transform("size") >= 4]
-    xd = t[col] - t.groupby("race_id")[col].transform("mean")
-    yd = t["perf"] - t.groupby("race_id")["perf"].transform("mean")
-    s = pd.DataFrame({"sxy": xd * yd, "sxx": xd * xd, "race_id": t["race_id"]}).groupby("race_id").sum()
-    return s
+NEW = leader_value.NEW
+CLASS_SQL = leader_value.CLASS_SQL
+horse_history, race_features, target_enc, race_lv = (leader_value.horse_history, leader_value.race_features,
+                                                     leader_value.target_enc, leader_value.race_lv)
 
 
 def build():
