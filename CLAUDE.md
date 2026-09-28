@@ -166,6 +166,17 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       so it can only be an offset layer on production, not a walk-forward input. Not adopted yet.
     - Gear: `gear_changes` is only filled from 1 Sep 2026 (992 races). There + gear is +0.0042 (-0.0034 to
       +0.0123) model alone, +0.0053 blend: no evidence, overfits. Retest after a few months of gear data.
+  - Leader value by projected pace / track (`tools/pace_leader_test.py`, `pace_leader_test.md`, 37,986 races 2023 to
+    Sep 2026, walk-forward v3): within-race slope of (WPR - prior avg WPR) on projected settle share goes from -1.61
+    (slowest projected fifth) to +0.36 (fastest); proj_adj + bias_adj goes -3.72 to -1.83, so the pace GRADIENT is
+    right but the level is ~2 WPR more pro-leader (partly because prior WPR already holds a horse's usual position).
+    Actual pace (hindsight) -3.14 to +2.62: pace matters a lot, the forecast (R2 0.11) catches a fraction. At SP the
+    projected leader is A/E 1.10 in slow races, 1.00 in the fastest fifth (back third 0.92 to 1.03); settle x pace
+    over SP + adj: beta right sign, -0.0001 n.s. Staying races (1701m+) favour back-markers (+0.69). Tracks: actual
+    vs model slope corr 0.84 (split-half 0.53); model much more pro-leader than results at Townsville, Mackay,
+    Longreach, Thangool, Emerald; Flemington, Mornington, Morphettville, Eagle Farm, Sunshine Coast favour
+    back-markers. Next: settle x proj_shape in the production logit (the logit has no pace term: proj_pace
+    -0.05, proj_shape 0 WPR per unit).
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
