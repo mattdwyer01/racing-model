@@ -83,7 +83,10 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
     if lean:
         assert light and not shared and not PX_KEEP, "lean needs light and no shared / PX_KEEP"
         fr, r3, _ = projection.project(fr, train_end, inplace=True)
-        proj = fr[["run_id"] + PROJ].copy()
+        if LEADER_VALUE:
+            from model import leader_value
+            fr["lv_x"] = leader_value.add(fr, leader_value.project_lv(con, fr, r3, train_end)).to_numpy()
+        proj = fr[["run_id"] + PROJ + (["lv_x"] if LEADER_VALUE else [])].copy()
         # position value map (a selection signal shown on the dashboard; not a production input), on a slim copy
         proj = proj.merge(position_map.features(con, fr[position_map.NEEDS].copy(), train_end), on="run_id",
                           how="left")

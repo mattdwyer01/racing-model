@@ -181,6 +181,18 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     sx_dist = same x log(dist / 1200). Model alone -0.0001 (-0.0002 to +0.0001; QLD -0.0002 n.s.), blend 0.0000
     (QLD -0.00004). Distance term adds nothing. Not adopted: proj_adj already carries the pace gradient, and the
     rest of pace is not forecastable from pre-race data (R2 0.11).
+  - Pace forecasts (`tools/pace_forecast_test.py`, `pace_forecast_test.md`, 38,370 races): new pace inputs (horse lead
+    history, early speed contest, jockey / barrier of the fastest, class, track x distance past shape) lift early
+    shape R2 0.094 -> 0.102 and the leader-value spread (slowest vs fastest fifth) 1.9 -> 2.5 WPR. GPS pace target
+    sorts leader value worse (0.5-0.9). A DIRECT leader-value target (race's within-race slope of WPR - prior WPR on
+    projected settle, weighted) sorts best: spread 6.3 WPR, beta +2.28 per SD (hindsight actual shape +1.79); main
+    inputs track, distance, front runners' pace history. Beyond proj_adj + bias_adj it still adds +1.40 per SD; at
+    SP (SP + adj + settle) -0.0004 (-0.0007 to -0.0001), stable beta; pace-only projections 0.0000.
+  - Leader value in the production logit (`model/leader_value.py`, `blend_eval.py --variants prodmu lv --logit-only
+    --tag lv`, `blend_eval_lv.md`, 37,821 races): lv_x = settle vs race mean x projected leader value (yearly
+    out-of-sample fits, so training rows see OOS values). Model alone -0.0006 (-0.0008 to -0.0004; QLD -0.0009,
+    VIC/SA -0.0002), blend -0.0001 (-0.0001 to -0.0000; QLD -0.0001); better in every fold. ADOPTED
+    (`production.py` sets `om.LEADER_VALUE`; lean dashboard build included; shown in "race-day projection").
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).

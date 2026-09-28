@@ -46,7 +46,8 @@ def horse_history(x):
     x["hp_led_early"], _ = decayed(x, "y_lead_early", "_led")
     x["hp_shape_fwd"], _ = decayed(x, "y_shape", "_fwd")
     x["hp_n"] = n
-    return x.drop(columns=["_led", "_fwd"])
+    x.drop(columns=["_led", "_fwd"], inplace=True)      # in place: the lean dashboard build cannot afford a copy
+    return x
 
 
 def target_enc(r, key, col, lam):
