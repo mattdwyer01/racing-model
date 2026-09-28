@@ -193,6 +193,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     out-of-sample fits, so training rows see OOS values). Model alone -0.0006 (-0.0008 to -0.0004; QLD -0.0009,
     VIC/SA -0.0002), blend -0.0001 (-0.0001 to -0.0000; QLD -0.0001); better in every fold. ADOPTED
     (`production.py` sets `om.LEADER_VALUE`; lean dashboard build included; shown in "race-day projection").
+    Disagreement at SP (`model/disagreement.py --lv`, `disagreement_lv.md`, 2023 to 2026): pushed UP top 5% A/E SP
+    1.075 (1.03-1.12; QLD 1.07, VIC/SA 1.08), ROI -25.8% vs price-matched control -31.8% (+0.002 to +0.125); DOWN
+    bottom 10% A/E 0.93 (QLD 0.91), bottom 5% QLD 0.865, ROI below control (QLD -0.150 to -0.045). Groups are
+    longshots (avg SP ~30), every group loses flat at SP: a selection / avoid filter, not a standalone bet.
+    At 2026 git-snapshot fixed prices (`tools/lv_fixed_price_check.py`, `lv_fixed_price_check.md`, 1,922 races,
+    median age 114 min): nothing significant (CIs +/-0.2 to 0.3). Retest on the Vultr TAB log.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
