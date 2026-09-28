@@ -134,6 +134,13 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     Weights matter: keep them filled (TAB race cards + TopRate weightHandicap).
   - TopRate race_results_2026.csv.gz stopped at 13 Sep 2026 and kept PRELIMINARY WPRs for its last week (8 Sep
     Muswellbrook 74.0 vs final ~62.5): TopRate PR 249 adds --refresh-preliminary and a daily run.
+  - Combo lines (`tools/combo_lines_test.py`, `combo_lines_test.md`, 1,027 races Apr to Sep 2026, pre-race values, Combo =
+    2/3 WPR proj + 1/3 TopRate rating): within 10 WPR holds 90% of winners (outside A/E 0.86, ROI -46%), within 4 WPR 58% in
+    2.8 runners (A/E 1.04), within 5 WPR 64% (A/E 1.02), beyond 15 WPR 2%. Dashboard Combo stays on the WPR scale (user
+    decision); lines at 10 and 4 WPR (TopRate PR #253).
+    Live Combo (our race-day adj + past ground loss in place of TopRate's speed_map / barrier; `combo_lines_test.py live`,
+    `combo_lines_live.md`, 695 races 22 Aug to 23 Sep): gap corr 0.990 with the tested Combo, ~5% of runners change
+    side of each line; within 10 holds 87% of winners (outside ROI -50%), within 4 holds 54% (A/E 1.01). Lines kept.
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
@@ -159,6 +166,39 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       so it can only be an offset layer on production, not a walk-forward input. Not adopted yet.
     - Gear: `gear_changes` is only filled from 1 Sep 2026 (992 races). There + gear is +0.0042 (-0.0034 to
       +0.0123) model alone, +0.0053 blend: no evidence, overfits. Retest after a few months of gear data.
+  - Leader value by projected pace / track (`tools/pace_leader_test.py`, `pace_leader_test.md`, 37,986 races 2023 to
+    Sep 2026, walk-forward v3): within-race slope of (WPR - prior avg WPR) on projected settle share goes from -1.61
+    (slowest projected fifth) to +0.36 (fastest); proj_adj + bias_adj goes -3.72 to -1.83, so the pace GRADIENT is
+    right but the level is ~2 WPR more pro-leader (partly because prior WPR already holds a horse's usual position).
+    Actual pace (hindsight) -3.14 to +2.62: pace matters a lot, the forecast (R2 0.11) catches a fraction. At SP the
+    projected leader is A/E 1.10 in slow races, 1.00 in the fastest fifth (back third 0.92 to 1.03); settle x pace
+    over SP + adj: beta right sign, -0.0001 n.s. Staying races (1701m+) favour back-markers (+0.69). Tracks: actual
+    vs model slope corr 0.84 (split-half 0.53); model much more pro-leader than results at Townsville, Mackay,
+    Longreach, Thangool, Emerald; Flemington, Mornington, Morphettville, Eagle Farm, Sunshine Coast favour
+    back-markers. The production logit has no pace term of its own (proj_pace -0.05, proj_shape 0 WPR per unit).
+  - Settle x race shape in the production logit (`blend_eval.py --variants prodmu shape shape-pace shape-dist
+    --logit-only --tag shape`, `blend_eval_shape.md`, 37,821 races): sx_pace = settle vs race mean x proj_shape,
+    sx_dist = same x log(dist / 1200). Model alone -0.0001 (-0.0002 to +0.0001; QLD -0.0002 n.s.), blend 0.0000
+    (QLD -0.00004). Distance term adds nothing. Not adopted: proj_adj already carries the pace gradient, and the
+    rest of pace is not forecastable from pre-race data (R2 0.11).
+  - Pace forecasts (`tools/pace_forecast_test.py`, `pace_forecast_test.md`, 38,370 races): new pace inputs (horse lead
+    history, early speed contest, jockey / barrier of the fastest, class, track x distance past shape) lift early
+    shape R2 0.094 -> 0.102 and the leader-value spread (slowest vs fastest fifth) 1.9 -> 2.5 WPR. GPS pace target
+    sorts leader value worse (0.5-0.9). A DIRECT leader-value target (race's within-race slope of WPR - prior WPR on
+    projected settle, weighted) sorts best: spread 6.3 WPR, beta +2.28 per SD (hindsight actual shape +1.79); main
+    inputs track, distance, front runners' pace history. Beyond proj_adj + bias_adj it still adds +1.40 per SD; at
+    SP (SP + adj + settle) -0.0004 (-0.0007 to -0.0001), stable beta; pace-only projections 0.0000.
+  - Leader value in the production logit (`model/leader_value.py`, `blend_eval.py --variants prodmu lv --logit-only
+    --tag lv`, `blend_eval_lv.md`, 37,821 races): lv_x = settle vs race mean x projected leader value (yearly
+    out-of-sample fits, so training rows see OOS values). Model alone -0.0006 (-0.0008 to -0.0004; QLD -0.0009,
+    VIC/SA -0.0002), blend -0.0001 (-0.0001 to -0.0000; QLD -0.0001); better in every fold. ADOPTED
+    (`production.py` sets `om.LEADER_VALUE`; lean dashboard build included; shown in "race-day projection").
+    Disagreement at SP (`model/disagreement.py --lv`, `disagreement_lv.md`, 2023 to 2026): pushed UP top 5% A/E SP
+    1.075 (1.03-1.12; QLD 1.07, VIC/SA 1.08), ROI -25.8% vs price-matched control -31.8% (+0.002 to +0.125); DOWN
+    bottom 10% A/E 0.93 (QLD 0.91), bottom 5% QLD 0.865, ROI below control (QLD -0.150 to -0.045). Groups are
+    longshots (avg SP ~30), every group loses flat at SP: a selection / avoid filter, not a standalone bet.
+    At 2026 git-snapshot fixed prices (`tools/lv_fixed_price_check.py`, `lv_fixed_price_check.md`, 1,922 races,
+    median age 114 min): nothing significant (CIs +/-0.2 to 0.3). Retest on the Vultr TAB log.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).

@@ -47,6 +47,7 @@ GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
 MAX_ROUNDS, EARLY = 1500, 100
 PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
 SETTLE_V4 = False  # with PX_KEEP: also keep the v4 settle projection (projection_v4.settle) as proj_settle_v4
+LEADER_VALUE = False  # also add leader_value.FEATS (projected leader value x settle; model/leader_value.py)
 EXTRA_PROJ = False  # also add PROJ_V4 (projection outputs with v4 settle) and GPS_PACE (projected GPS race pace);
                     # "lite" (lean builds only): same columns from the v3 projection, no second pass (low memory)
 KEEP_SIM = False    # with EXTRA_PROJ: keep the race simulation's inputs in LAST_PX (tools/race_card.py speed map)
@@ -82,7 +83,10 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
     if lean:
         assert light and not shared and not PX_KEEP, "lean needs light and no shared / PX_KEEP"
         fr, r3, _ = projection.project(fr, train_end, inplace=True)
-        proj = fr[["run_id"] + PROJ].copy()
+        if LEADER_VALUE:
+            from model import leader_value
+            fr["lv_x"] = leader_value.add(fr, leader_value.project_lv(con, fr, r3, train_end)).to_numpy()
+        proj = fr[["run_id"] + PROJ + (["lv_x"] if LEADER_VALUE else [])].copy()
         # position value map (a selection signal shown on the dashboard; not a production input), on a slim copy
         proj = proj.merge(position_map.features(con, fr[position_map.NEEDS].copy(), train_end), on="run_id",
                           how="left")
@@ -106,7 +110,11 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
             e = e.merge(px4, on="run_id", how="left")
         e[JT] = e[JT].fillna(0.0)
         return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
-    px, _, _ = projection.project(fr, train_end)
+    px, r3, _ = projection.project(fr, train_end)
+    if LEADER_VALUE:
+        from model import leader_value
+        px["lv_x"] = leader_value.add(px, leader_value.project_lv(con, px, r3, train_end)).to_numpy()
+    del r3
     if shared:
         LAST_PX["full"] = px
     if PX_KEEP:
@@ -127,7 +135,7 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
     e = h.merge(a[["run_id"] + extra], on="run_id") \
         .merge(a[["run_id", "wpr"]].rename(columns={"wpr": "y_wpr"}), on="run_id") \
         .merge(jt.features(con), on="run_id", how="left") \
-        .merge(px[["run_id"] + PROJ], on="run_id", how="left") \
+        .merge(px[["run_id"] + PROJ + (["lv_x"] if LEADER_VALUE else [])], on="run_id", how="left") \
         .merge(xh, on="run_id", how="left") \
         .merge(pm, on="run_id", how="left")
     if EXTRA_PROJ:

@@ -25,6 +25,10 @@ Variants (added inputs on top of the baseline):
   comments  stewards' and video comment history: trouble / health flags and the scored video verdict tag
   prod      production inputs: baseline + comments + past ground-loss credit (h_gl, h_gl_miss, h_rail)
   posmap    prod + expected position value and width value (position_map.py)
+  shape     prodmu + projected settle (vs the race mean) x projected early shape and x log(distance / 1200)
+            (tools/pace_leader_test.py: forward runners lose value in races projected fast and in staying races);
+            shape-pace / shape-dist leave one term out
+  lv        prodmu + projected leader value x settle (model/leader_value.py, tools/pace_forecast_test.py)
 """
 import argparse
 import sys
@@ -52,6 +56,10 @@ EXTRA = {"baseline": [], "gl": ["h_gl", "h_gl_miss", "h_rail"], "fig2": [],
 P2 = {"v4", "gps", "fig2", "mu"}
 PARTS = {"prod2": P2, **{f"prod2-{k}": P2 - {k} for k in sorted(P2)}}
 EXTRA.update({v: extra_history.CM_FEATS + ["h_gl", "h_gl_miss", "h_rail"] for v in PARTS})
+SHAPE = {"shape": ["sx_pace", "sx_dist"], "shape-pace": ["sx_dist"], "shape-dist": ["sx_pace"]}
+EXTRA.update({v: EXTRA["prodmu"] + c for v, c in SHAPE.items()})
+SHAPE["lv"] = ["lv_x"]                       # same prodmu fit path
+EXTRA["lv"] = EXTRA["prodmu"] + ["lv_x"]
 MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
 
 
@@ -86,6 +94,12 @@ RATING = False          # set by --rating
 LOGIT_ONLY = False      # set by --logit-only (skip the GBM fits)
 RATING_TABLES = {}
 KEY = ["race_id", "race_date", "state", "fold"]
+
+
+def add_shape_x(e):
+    """Settle x race shape interactions (projected settle share minus the race mean)."""
+    sd = e["proj_settle"] - e.groupby("race_id")["proj_settle"].transform("mean")
+    return e.assign(sx_pace=sd * e["proj_shape"], sx_dist=sd * np.log(e["dist"] / 1200))
 
 
 def _race(df):
@@ -125,8 +139,8 @@ def run_fold(e, y, variants):
                 "gbm": lambda d, v=v: om.gbm_fit(d, feats=feats_for(v, NOMKT), market=False)[0]}
         if LOGIT_ONLY:
             fits.pop("gbm")
-        if v == "prodmu":
-            fits = {"logit": lambda d: mu_logit_fit(d, feats_for("prodmu", LOGIT_X))}
+        if v == "prodmu" or v in SHAPE:
+            fits = {"logit": lambda d, v=v: mu_logit_fit(d, feats_for(v, LOGIT_X))}
         if v in PARTS:
             fits = {"logit": (lambda d, v=v: mu_logit_fit(d, feats_for(v, LOGIT_X))) if "mu" in PARTS[v]
                     else (lambda d, v=v: om.logit_fit(d, feats_for(v, LOGIT_X)))}
@@ -206,6 +220,7 @@ def main():
     LOGIT_ONLY = args.logit_only
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
+    om.LEADER_VALUE = "lv" in variants
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
     per_race_file, wts_file = ROOT / f"reports/blend_per_race{suffix}.csv.gz", ROOT / f"reports/blend_weights{suffix}.csv"
@@ -216,7 +231,7 @@ def main():
         con = duckdb.connect(str(figure.DB), read_only=True)
         per_race, wts = [], {}
         for y in FOLDS:
-            r, w = run_fold(om.add_context(om.build(con, f"{y}-01-01")), y, variants)
+            r, w = run_fold(add_shape_x(om.add_context(om.build(con, f"{y}-01-01"))), y, variants)
             per_race.append(r)
             wts[y] = w
             print(y, {k: round(float(r[k].mean()), 4) for k in r.columns if k not in KEY}, flush=True)
@@ -288,6 +303,16 @@ def main():
         L += ["", "## Rating mu as a logit input vs production inputs (paired by race)", "",
               diff_table(d, pm, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
               half_table(d, pm[:1], rng).to_markdown(index=False, floatfmt=".4f")]
+    sh = [v for v in variants if v in SHAPE]
+    if sh and "prodmu" in variants:
+        ps = [(f"{v} {k} logit - prodmu {k} logit", f"{v}: {k} logit", f"prodmu: {k} logit")
+              for v in sh for k in ["model", "blend"]]
+        if "shape" in variants:
+            ps += [(f"shape {k} logit - {v} {k} logit", f"shape: {k} logit", f"{v}: {k} logit")
+                   for v in sh if v != "shape" for k in ["model", "blend"]]
+        L += ["", "## Settle x race shape vs prodmu (paired by race)", "",
+              diff_table(d, ps, rng, subsets).to_markdown(index=False, floatfmt=".4f"), "",
+              half_table(d, [p for p in ps if "blend" in p[0]][:1], rng).to_markdown(index=False, floatfmt=".4f")]
     if len(variants) > 1:
         vs_base = [(f"{v} blend {n} - baseline blend {n}", f"{v}: blend {n}", f"baseline: blend {n}")
                    for v in variants[1:] for n in names[v] if n != "rating"] + \
