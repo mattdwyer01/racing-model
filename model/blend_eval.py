@@ -241,7 +241,8 @@ def main():
             if any(v.startswith("wet") for v in variants):
                 if "wf" not in locals():
                     wf = wet_form.features(con)
-                e = e.merge(wf, on="run_id", how="left").fillna({c: 0.0 for c in wet_form.FEATS})
+                if not all(c in e for c in wet_form.FEATS):
+                    e = e.merge(wf, on="run_id", how="left").fillna({c: 0.0 for c in wet_form.FEATS})
             r, w = run_fold(e, y, variants)
             per_race.append(r)
             wts[y] = w

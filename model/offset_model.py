@@ -47,6 +47,7 @@ GRID = [dict(num_leaves=15, min_data_in_leaf=1000, learning_rate=0.03),
 MAX_ROUNDS, EARLY = 1500, 100
 PX_KEEP = []      # projection-frame columns to keep from the last build (all runs), e.g. for race_sim.py
 SETTLE_V4 = False  # with PX_KEEP: also keep the v4 settle projection (projection_v4.settle) as proj_settle_v4
+WET_FORM = False      # also add wet_form.FEATS (wet / heavy form, sire wet form; model/wet_form.py)
 LEADER_VALUE = False  # also add leader_value.FEATS (projected leader value x settle; model/leader_value.py)
 EXTRA_PROJ = False  # also add PROJ_V4 (projection outputs with v4 settle) and GPS_PACE (projected GPS race pace);
                     # "lite" (lean builds only): same columns from the v3 projection, no second pass (low memory)
@@ -109,6 +110,7 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
         if px4 is not None:
             e = e.merge(px4, on="run_id", how="left")
         e[JT] = e[JT].fillna(0.0)
+        e = _add_wet(con, e)
         return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
     px, r3, _ = projection.project(fr, train_end)
     if LEADER_VALUE:
@@ -142,8 +144,19 @@ def build_features(con, train_end, shared=None, light=False, lean=False):
         e = e.merge(px4, on="run_id", how="left")
     # y_wpr is today's result: a fitting target for the rating model only, never an input
     e[JT] = e[JT].fillna(0.0)
+    e = _add_wet(con, e)
     # fixed row order, so adding columns or merges never changes what the GBM's row sampling sees
     return e.sort_values(["race_date", "race_id", "run_id"], kind="mergesort").reset_index(drop=True)
+
+
+def _add_wet(con, e):
+    """Wet / heavy form inputs (history only, no fitted parts) when WET_FORM is on."""
+    if not WET_FORM:
+        return e
+    from model import wet_form
+    e = e.merge(wet_form.features(con), on="run_id", how="left")
+    e[wet_form.FEATS] = e[wet_form.FEATS].fillna(0.0)
+    return e
 
 
 def _extra_proj_lite(con, x, r, train_end):
