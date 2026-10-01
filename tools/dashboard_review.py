@@ -53,7 +53,10 @@ def load(repo):
                                "runs_with_wpr", "form_string", "starting_price_sp", "finish_position", "resulted",
                                "scratched"])
     fin = fin[fin["date"] >= s["date"].min()]
-    d = fin.merge(s.drop(columns=["race_id", "date", "scratched"]), on="run_id", how="left")
+    d = fin.merge(s.drop(columns=["race_id", "date", "scratched"], errors="ignore"), on="run_id", how="left")
+    for c in ["rm_d", "rm_gl", "rm_p"]:          # racing_model.json exists from 24 Sep only
+        if c not in d:
+            d[c] = np.nan
     d = d[(d["scratched"].fillna(0) == 0) & (d["resulted"].fillna(0) == 1)].copy()
     d["sp"] = pd.to_numeric(d["starting_price_sp"], errors="coerce")
     d["fx"] = pd.to_numeric(d["fixed_win_price"], errors="coerce").where(lambda v: v > 1)
