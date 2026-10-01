@@ -199,6 +199,21 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     longshots (avg SP ~30), every group loses flat at SP: a selection / avoid filter, not a standalone bet.
     At 2026 git-snapshot fixed prices (`tools/lv_fixed_price_check.py`, `lv_fixed_price_check.md`, 1,922 races,
     median age 114 min): nothing significant (CIs +/-0.2 to 0.3). Retest on the Vultr TAB log.
+  - Dashboard review on PRE-RACE values (`tools/dashboard_snapshots.py` rebuilds what the dashboard showed from TopRate
+    git history, `tools/dashboard_review.py`, `dashboard_review.md`, 1,614 races 22 Aug to 30 Sep, all states; Combo /
+    speed map as the dashboard builds them now): Combo top 30.4% wins, ROI -14.9% at SP (SP fav 34.6%, -12.8%);
+    speed map tag: favoured A/E 1.1, unfavoured 1.0 (not a negative signal). User rule (Combo top 4+ clear, speed map
+    not unfavoured, no first starter): 307 bets, 41.0%, ROI -5.1% SP (-19 to +9), -4.4% at stored fixed; favoured-only
+    223 bets +6.7% (-10 to +24), n.s.; first-starter filter makes no difference. Quaddie rule (within 4 + 4-10 not
+    unfavoured + first starters, <= 600 combos): hit 35% at ~300 combos, estimated ROI -47% (-66 to -25; dividends
+    estimated from SP, 20% take: needs real dividends 1.9x the estimate to break even); within-4 only -26% n.s.
+    No quaddie dividends anywhere in the data: capture them in TopRate's TAB results poller.
+  - Wet / heavy form (`model/wet_form.py`, `blend_eval.py --variants prodmu lv wet wet-sire --logit-only --tag wet`,
+    `blend_eval_wet.md`, 37,821 races): heavy-band and soft-band form (dev vs the horse's prior level), untried
+    wet / heavy, sire wet / heavy form (progeny, earlier dates). vs production: all races model alone -0.0002 n.s.,
+    blend -0.0001 (significant, tiny); heavy 9-10 (1,248 races) model alone -0.0033 (-0.0079 to +0.0015), blend
+    -0.0006 (-0.0013 to 0.0000); soft 7-8 blend -0.0004 n.s.; sire inputs carry part of it. Production edge vs SP by
+    going: good/soft 1-6 -0.0017 (significant), soft 7-8 +0.0002, heavy +0.0025 (n.s.): no edge on wet tracks.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).

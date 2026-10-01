@@ -24,22 +24,26 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import clogit, extra_history, figure, leader_value, position_map, rating  # noqa: E402
+from model import clogit, extra_history, figure, leader_value, position_map, rating, wet_form  # noqa: E402
 from model import offset_model as om  # noqa: E402
 
 # projected leader value x settle (leader_value.py; adopted Sep 2026, blend_eval_lv.md: model alone -0.0006,
 # QLD -0.0009, blend -0.0001, all significant)
 om.LEADER_VALUE = True
+# wet / heavy form (wet_form.py; adopted Oct 2026, blend_eval_wet.md: heavy model alone -0.0033, blend -0.0006;
+# all races blend -0.0001 significant, model alone -0.0002 n.s.; never worse on any going)
+om.WET_FORM = True
 
 GL = ["h_gl", "h_gl_miss", "h_rail"]     # past extra ground / width credit (QLD GPS); kept by decision, not for blend gain
-COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS + GL + leader_value.FEATS))
+COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS + GL + leader_value.FEATS +
+                          wet_form.FEATS))
 MU = ["r_mu", "r_sigma"]   # rating model (rating.py): expected WPR vs the field and its uncertainty (adopted Sep 2026)
 WPR_LEVEL = ["h_wpr", "dm", "fig_last", "best3", "best10", "mean3", "r_mu"]
 GROUPS = {
     "ability": WPR_LEVEL + ["r_sigma", "h_class", "log_n", "h_none", "h_last_wpr"],
     "form shape": ["trend", "h_s_early", "h_s_l600", "h_s_early_miss", "h_settle", "h_shape", "h_pace",
                    "h_settle_miss", "h_wt_rel"],
-    "distance / going": ["dist_ratio", "dist_abs", "dist_fit", "going_fit", "surface_fit"],
+    "distance / going": ["dist_ratio", "dist_abs", "dist_fit", "going_fit", "surface_fit"] + wet_form.FEATS,
     "prep": ["fu", "su", "up3", "fu_apt", "su_apt", "log_days", "first_up", "trial_since", "trial_pos",
              "trial_marg", "trial_pos_debut", "trial_marg_debut"],
     "race-day projection": ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl",

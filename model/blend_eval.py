@@ -29,6 +29,8 @@ Variants (added inputs on top of the baseline):
             (tools/pace_leader_test.py: forward runners lose value in races projected fast and in staying races);
             shape-pace / shape-dist leave one term out
   lv        prodmu + projected leader value x settle (model/leader_value.py, tools/pace_forecast_test.py)
+  wet       production (prodmu + lv_x) + wet / heavy form (model/wet_form.py: heavy and soft-band form, untried on
+            wet / heavy, sire wet / heavy form); wet-sire leaves the sire inputs out
 """
 import argparse
 import sys
@@ -60,6 +62,10 @@ SHAPE = {"shape": ["sx_pace", "sx_dist"], "shape-pace": ["sx_dist"], "shape-dist
 EXTRA.update({v: EXTRA["prodmu"] + c for v, c in SHAPE.items()})
 SHAPE["lv"] = ["lv_x"]                       # same prodmu fit path
 EXTRA["lv"] = EXTRA["prodmu"] + ["lv_x"]
+from model import wet_form  # noqa: E402
+SHAPE["wet"], SHAPE["wet-sire"] = wet_form.FEATS, wet_form.NO_SIRE
+EXTRA["wet"] = EXTRA["lv"] + wet_form.FEATS
+EXTRA["wet-sire"] = EXTRA["lv"] + wet_form.NO_SIRE
 MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
 
 
@@ -220,7 +226,7 @@ def main():
     LOGIT_ONLY = args.logit_only
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
-    om.LEADER_VALUE = "lv" in variants
+    om.LEADER_VALUE = any(v in variants for v in ("lv", "wet", "wet-sire"))
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
     per_race_file, wts_file = ROOT / f"reports/blend_per_race{suffix}.csv.gz", ROOT / f"reports/blend_weights{suffix}.csv"
@@ -231,7 +237,13 @@ def main():
         con = duckdb.connect(str(figure.DB), read_only=True)
         per_race, wts = [], {}
         for y in FOLDS:
-            r, w = run_fold(add_shape_x(om.add_context(om.build(con, f"{y}-01-01"))), y, variants)
+            e = add_shape_x(om.add_context(om.build(con, f"{y}-01-01")))
+            if any(v.startswith("wet") for v in variants):
+                if "wf" not in locals():
+                    wf = wet_form.features(con)
+                if not all(c in e for c in wet_form.FEATS):
+                    e = e.merge(wf, on="run_id", how="left").fillna({c: 0.0 for c in wet_form.FEATS})
+            r, w = run_fold(e, y, variants)
             per_race.append(r)
             wts[y] = w
             print(y, {k: round(float(r[k].mean()), 4) for k in r.columns if k not in KEY}, flush=True)
