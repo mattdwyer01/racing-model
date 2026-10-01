@@ -18,14 +18,16 @@ from pipeline import store  # noqa: E402
 
 TOPRATE = re.compile(r"race_results_\d{4}\.csv\.gz")
 LIVE = "toprate_runners.csv"
+LIVE_ARCHIVE = "toprate_runners_archive.csv.gz"   # TopRate's races older than 60 days (split 1 Oct 2026)
 GPS = re.compile(r"(rq|rc)_gps_(runs|sections)\.parquet|tab_price_history_from_git\.csv\.gz")
 
 
 def pull(force=False):
     names = store.assets()
     wanted = {n: ROOT / "data/raw/toprate" / n for n in names if TOPRATE.fullmatch(n)}
-    if LIVE in names:
-        wanted[LIVE] = ROOT / "data/raw/live" / LIVE
+    for n in (LIVE, LIVE_ARCHIVE):
+        if n in names:
+            wanted[n] = ROOT / "data/raw/live" / n
     for n in names:
         if GPS.fullmatch(n):
             wanted[n] = ROOT / "data/interim" / n

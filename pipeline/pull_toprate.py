@@ -6,6 +6,7 @@
 Downloads (raw.githubusercontent.com, no credentials: the repo is public):
   race_results_<year>.csv.gz  current year (and last year in January)  -> data/raw/toprate/
   toprate_runners.csv         dashboard runners file: upcoming fields, race times, fixed prices -> data/raw/live/
+  toprate_runners_archive.csv.gz  its races older than 60 days (split off 1 Oct 2026) -> data/raw/live/
   toprate_price_history.csv   rolling window of TAB fixed-price snapshots (run_id, snapshot_time, price)
 Archives the price snapshots: merged into data/interim/tab_price_snapshots.csv.gz (deduplicated), so bet-time
 price history keeps growing after the rolling window drops old rows. Changed files are uploaded to the store.
@@ -57,7 +58,17 @@ def main():
     years = [today.year] + ([today.year - 1] if today.month == 1 else [])
     files = {f"race_results_{y}.csv.gz": ROOT / "data/raw/toprate" / f"race_results_{y}.csv.gz" for y in years}
     files["toprate_runners.csv"] = ROOT / "data/raw/live/toprate_runners.csv"
-    changed = [name for name, dest in files.items() if _download(name, dest)]
+    # races older than 60 days (TopRate runners_io.py split, 1 Oct 2026)
+    files["toprate_runners_archive.csv.gz"] = ROOT / "data/raw/live/toprate_runners_archive.csv.gz"
+    changed = []
+    for name, dest in files.items():
+        try:
+            if _download(name, dest):
+                changed.append(name)
+        except requests.HTTPError as e:            # the archive only exists once TopRate has split the file
+            if name != "toprate_runners_archive.csv.gz":
+                raise
+            print(f"{name}: not there yet ({e.response.status_code})", flush=True)
     hist = ROOT / "data/raw/live/toprate_price_history.csv"
     _download("toprate_price_history.csv", hist)
     archive_prices(hist)

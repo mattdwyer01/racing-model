@@ -138,10 +138,26 @@ from base b where is_trial_or_jumpout;
 
 
 LIVE = ROOT / "data/raw/live/toprate_runners.csv"   # copy of the TopRate dashboard's runners file
+# Since 1 Oct 2026 TopRate keeps races older than 60 days in a gzipped archive (its runners_io.py: the single CSV
+# hit GitHub's 100MB limit). live_runners reads both, joined as text (types inferred as before), live row wins.
+LIVE_ARCHIVE = LIVE.with_name("toprate_runners_archive.csv.gz")
+LIVE_ALL = LIVE.with_name("toprate_runners_all.csv")
 
-LIVE_SQL = f"""
+
+def live_file():
+    """The runners CSV to load: the live file alone, or archive + live combined into LIVE_ALL."""
+    if not LIVE_ARCHIVE.exists():
+        return LIVE
+    import pandas as pd
+    parts = [pd.read_csv(f, dtype=str, keep_default_na=False) for f in (LIVE_ARCHIVE, LIVE)]
+    d = pd.concat(parts, ignore_index=True).drop_duplicates("run_id", keep="last")
+    d.to_csv(LIVE_ALL, index=False)
+    return LIVE_ALL
+
+
+LIVE_SQL = """
 create or replace table live_runners as
-select * from read_csv('{LIVE}', sample_size = -1);
+select * from read_csv('{live}', sample_size = -1);
 
 -- race number and start time for every race the dashboard has seen (Apr 2026 onward)
 create or replace table race_times as
@@ -216,7 +232,7 @@ def build(db=DB):
     con = duckdb.connect(str(db))
     con.execute(SQL)
     if LIVE.exists():
-        con.execute(LIVE_SQL)
+        con.execute(LIVE_SQL.format(live=live_file()))
         con.execute(UPCOMING_SQL)
         con.execute(WEIGHT_FILL_SQL)
     con.execute(TABLE_SQL)
