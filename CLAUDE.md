@@ -208,6 +208,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     unfavoured + first starters, <= 600 combos): hit 35% at ~300 combos, estimated ROI -47% (-66 to -25; dividends
     estimated from SP, 20% take: needs real dividends 1.9x the estimate to break even); within-4 only -26% n.s.
     No quaddie dividends anywhere in the data: capture them in TopRate's TAB results poller.
+  - Wet / heavy form (`model/wet_form.py`, `blend_eval.py --variants prodmu lv wet wet-sire --logit-only --tag wet`,
+    `blend_eval_wet.md`, 37,821 races): heavy-band and soft-band form (dev vs the horse's prior level), untried
+    wet / heavy, sire wet / heavy form (progeny, earlier dates). vs production: all races model alone -0.0002 n.s.,
+    blend -0.0001 (significant, tiny); heavy 9-10 (1,248 races) model alone -0.0033 (-0.0079 to +0.0015), blend
+    -0.0006 (-0.0013 to 0.0000); soft 7-8 blend -0.0004 n.s.; sire inputs carry part of it. Production edge vs SP by
+    going: good/soft 1-6 -0.0017 (significant), soft 7-8 +0.0002, heavy +0.0025 (n.s.): no edge on wet tracks.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
