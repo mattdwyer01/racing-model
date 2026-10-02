@@ -145,6 +145,8 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     grid; first starters hurt almost everywhere, outer 8 beats outer 10 at every inner (4/8 no FS -12% vs 4/10 -39%,
     user rule 4/10 + FS -47%); inner 2-4 within noise. Dashboard outer line now 8 WPR (TopRate PR #259). Combo cap:
     300-600 best (-8 to -12%), no cap -30% (14 quaddies over 1,000 combos lose most); all CIs include the 20% take.
+    Real dividends vs the SP estimate (user-reported, 2 Oct): Launceston $48 vs $40 (1.20), Moruya $185 vs $139 (1.33),
+    Pakenham $133 vs $81 (1.64); geometric mean 1.38. At that ratio the 4/8 rule's -12% would be about +21%.
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
