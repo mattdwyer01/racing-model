@@ -147,6 +147,14 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     300-600 best (-8 to -12%), no cap -30% (14 quaddies over 1,000 combos lose most); all CIs include the 20% take.
     Real dividends vs the SP estimate (user-reported, 2 Oct): Launceston $48 vs $40 (1.20), Moruya $185 vs $139 (1.33),
     Pakenham $133 vs $81 (1.64); geometric mean 1.38. At that ratio the 4/8 rule's -12% would be about +21%.
+  - Real TAB dividends: TopRate `tab_dividends.py` logs every pool per race from 2 Oct 2026 (`tab_dividends.csv`; TAB's API
+    serves no past dates). Exotic rules (`tools/exotics_test.py`, `exotics_test.md`, 22 Aug to 1 Oct, 265 meetings, SP-based
+    discounted PL estimate calibrated per pool on 2 Oct's 287 real dividends: real x fair-SP chance Win 0.85, Quinella 0.83,
+    Exacta 0.82, Trifecta 0.79, First Four 0.75, Running Double 0.87, slope ~1): vs the SAME number of runners picked by SP
+    (flexi, paired), box within-4 beats SP in Quinella +8.4 pts (-1.3 to +18.0), Exacta +8.5 (-1.1 to +18.5), Trifecta
+    +23 (-5 to +56), A/A/B trifecta +15 (-7 to +37); First Four -4, multi-race pools no gain (doubles / treble / quaddies
+    have 5-6 real dividends each: too few to calibrate). Absolute: trifecta A/A/B +13% flexi, box A +12%, exacta / quinella
+    box A +2 / +4% (one-day calibration). Re-test on real dividends after ~3 weeks of capture.
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
