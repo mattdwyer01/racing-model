@@ -249,6 +249,13 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       history). No flattering: revised-up horses ran A/E 0.88 next start. Train / serve mismatch; keep dated copies.
     - Bad SPs: 436 VIC/SA/QLD races since 2023 have SPs summing below 100% (impossible); QLD has 1,533 races over 160%
       (thin country markets, likely real). Exclude the first group from training and evaluation.
+    - Bad-SP filter (`blend_eval.py --variants lv --logit-only --sp-check --tag spcheck`, 38,077 clean races of 38,310):
+      blend / SP calibration fitted without races whose SPs sum below 100%: lv blend -0.00002 (-0.00004 to -0.00001),
+      weights barely move (a 0.117-0.184 vs 0.122-0.185). ADOPTED in `production.train` (consistency; tiny gain).
+    - wpr_nett top layer ADOPTED (`model/wpr_nett_layer.py`, applied in `race_card.score` -> race cards / dashboard;
+      `model % (base)` keeps production's own chance; RACING_WPR_NETT=0 switches it off). Weights 0.834 log p_model,
+      0.049 per wpr_nett point vs field, 0.128 missing (mean of the half-window fits). Smoke test 26 Sep to 2 Oct
+      (334 races, weights partly in-sample): model log loss 1.7984 -> 1.7863. Refit with gear_wpr_test.py as data grows.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in

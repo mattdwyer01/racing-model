@@ -121,6 +121,9 @@ def train(con, train_end, e=None):
     rm_in = fit_mu(inner)
     inner, bl = add_mu(rm_in, inner), add_mu(rm_in, bl)
     b_in = _fit_raw(inner, COLS + MU)
+    # blend weights / SP calibration without races whose SPs sum below 100% (impossible: bad SP data; 0.6% of races;
+    # `blend_eval.py --sp-check`, -0.00002 blend, significant but tiny)
+    bl = _race(bl[(1 / bl["sp"]).groupby(bl["race_id"]).transform("sum") >= 1.0].copy())
     p_bl = np.clip(om._softmax(utility(bl, b_in), bl["race"].to_numpy()), 1e-12, 1)
     a, b = clogit.fit(np.c_[np.log(p_bl), bl["log_p_sp"].to_numpy(float)], bl["race"].to_numpy(), bl["won"].to_numpy())
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
