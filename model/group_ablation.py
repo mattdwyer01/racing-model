@@ -63,10 +63,21 @@ def fold(e, y, variants):
 def main():
     full = production.COLS + production.MU
     variants = {"full": full}
+    import os
+    if os.environ.get("ABLATE_DROP"):        # joint test: ABLATE_DROP="comments,ground loss (past runs)"
+        drop = [g.strip() for g in os.environ["ABLATE_DROP"].split(",")]
+        gone = set().union(*[set(production.GROUPS[g]) for g in drop])
+        variants["- " + " + ".join(drop)] = [c for c in full if c not in gone]
+        return run(variants, ROOT / "reports/group_ablation_joint.md", ROOT / "reports/group_ablation_joint_per_race.csv.gz")
     for g, cs in production.GROUPS.items():
         kept = [c for c in full if c not in cs]
         if len(kept) < len(full):
             variants[f"- {g}"] = kept
+    return run(variants, OUT, PER_RACE)
+
+
+def run(variants, out_md, per_race_file):
+    full = production.COLS + production.MU
     con = duckdb.connect(str(figure.DB), read_only=True)
     res, wts = [], {}
     for y in FOLDS:
@@ -81,7 +92,7 @@ def main():
         wts[y] = w
         del e
     d = pd.concat(res, ignore_index=True)
-    d.to_csv(PER_RACE, index=False, float_format="%.6f")
+    d.to_csv(per_race_file, index=False, float_format="%.6f")
     rng = np.random.default_rng(0)
 
     def ci(x):
@@ -94,7 +105,7 @@ def main():
         if v == "full":
             continue
         g = v[2:]
-        n_in = len([c for c in full if c in production.GROUPS[g]])
+        n_in = len(full) - len(cols)
         rows.append({"dropped group": g, "inputs": n_in,
                      "model alone": ci(d[f"{v}: model"] - d["full: model"]),
                      "blend": ci(d[f"{v}: blend"] - d["full: blend"]),
@@ -105,7 +116,7 @@ def main():
          f" SP {d['SP'].mean():.4f}. Differences = without the group minus full (positive = the group helps).", "",
          pd.DataFrame(rows).to_markdown(index=False), "",
          "Blend weight on the model (a) per fold:", "", pd.DataFrame(wts).T.round(3).to_markdown(), ""]
-    OUT.write_text("\n".join(L) + "\n")
+    out_md.write_text("\n".join(L) + "\n")
     print("\n".join(L))
 
 
