@@ -256,6 +256,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       `model % (base)` keeps production's own chance; RACING_WPR_NETT=0 switches it off). Weights 0.834 log p_model,
       0.049 per wpr_nett point vs field, 0.128 missing (mean of the half-window fits). Smoke test 26 Sep to 2 Oct
       (334 races, weights partly in-sample): model log loss 1.7984 -> 1.7863. Refit with gear_wpr_test.py as data grows.
+    - Combo strike rate (`tools/combo_strike_test.py`, `combo_strike_test.md`, 1,753 races 22 Aug to 3 Oct, pre-race):
+      top pick wins Combo 30.7%, projection only 26.6%, RM only 29.1%, TopRate rating only 33.3%, SP fav 34.4%. Rating
+      share 0.7: 33.0% (both halves), ROI -14% -> -11%, top pick = SP fav 59% -> 69%; non-fav top picks A/E pm 1.10 -> 1.18
+      (projection-only disagreements are the weak ones, -23%). ADOPTED in TopRate (PR #284): Combo 0.3 proj + 0.7 rating,
+      lines 4 / 8 -> 5 / 10 (same coverage: 2.51 runners / 61% of winners inside 5, 4.57 / 82% inside 10; exotic hit A/E
+      unchanged); bet_log.py matches. Value stays the Racing Model's job.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
