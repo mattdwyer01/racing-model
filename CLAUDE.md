@@ -155,6 +155,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     +23 (-5 to +56), A/A/B trifecta +15 (-7 to +37); First Four -4, multi-race pools no gain (doubles / treble / quaddies
     have 5-6 real dividends each: too few to calibrate). Absolute: trifecta A/A/B +13% flexi, box A +12%, exacta / quinella
     box A +2 / +4% (one-day calibration). Re-test on real dividends after ~3 weeks of capture.
+    Caps (flexi, est.): trifecta A/A/B 36, box A 24, exacta 12, quinella 6, quaddie 400; first starter in the race / any
+    leg hurts trifecta (-18% vs +23%) and quaddie (-58% vs +65%). Early quaddie legs = the 4 races before the main
+    (races 1-4 at 7 races or fewer; user correction, `exotics_test.multi_legs`): 61 of 201 qualify, est. +119% (-15 to
+    +285) vs -40% for SP picks. Dashboard race pages show these live (TopRate `lib/betRules.ts`, PRs #267 / #268).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,

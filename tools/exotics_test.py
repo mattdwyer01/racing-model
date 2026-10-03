@@ -11,7 +11,7 @@ Estimate: chance of the winning combination from normalised SP with a discounted
 the winners' chances. Per pool, log(real dividend) = a + b log(1 / chance) is fitted on the calibration days; the
 estimate for a test-day hit is exp(a + b log(1 / chance)) (smearing-corrected for the mean). Pools: Win, Quinella,
 Exacta, Trifecta, FirstFour, RunningDouble (each consecutive pair), DailyDouble (last-2 and last race), Treble (last 3),
-Quaddie (last 4), EarlyQuaddie (races 1-4, meetings with 7+ races) - leg layout as TAB's 2 Oct dividends show it.
+Quaddie (last 4), EarlyQuaddie (the 4 races before the main quaddie; races 1-4 at meetings of 7 races or fewer) - leg layout as TAB's 2 Oct dividends show it.
 
 Rules use the dashboard lines: A = within 4 Combo points of the top, B = A + 4 to 8 back unless speed map unfavoured,
 T = Combo top pick; controls pick by SP only (S2 / S3 / ... = shortest 2 / 3 / ... in the market). Cost = number of
@@ -131,8 +131,11 @@ def multi_legs(meet):
         out["Treble"] = [[last - 2, last - 1, last]]
     if len(nos) >= 4:
         out["Quaddie"] = [list(range(last - 3, last + 1))]
-    if len(nos) >= 7:
-        out["EarlyQuaddie"] = [[1, 2, 3, 4]]
+    # early quaddie: the 4 races before the main quaddie; at 7 races or fewer, races 1-4 (overlapping the main)
+    if len(nos) >= 8:
+        out["EarlyQuaddie"] = [list(range(last - 7, last - 3))]
+    elif len(nos) >= 5:
+        out["EarlyQuaddie"] = [nos[:4]]
     return {k: [l for l in v if all(x in meet for x in l)] for k, v in out.items()}
 
 
