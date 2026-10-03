@@ -1,0 +1,68 @@
+name: ATC sectionals probe
+
+# One-off feasibility check for NSW metro sectionals (CLAUDE.md "Future sources"): can a GitHub-hosted runner reach
+# feed.australianturfclub.com.au, which meetings exist, and what a PDF holds. Writes reports/atc_probe.md and commits
+# it back to the branch. Runs on a push that changes this file.
+
+on:
+  push:
+    paths: [".github/workflows/atc_probe.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet requests pdfplumber
+      - name: Probe
+        run: |
+          python3 - <<'PY'
+          import datetime as dt, io, requests, pdfplumber
+          from pathlib import Path
+          base = "https://feed.australianturfclub.com.au/sectionals/swiss-timing/{y}/{dm}{t}-{r}.pdf"
+          tracks = ["RAND", "ROSE", "CANT", "WARW"]
+          L = ["# ATC Swiss Timing sectionals probe", "", f"- Run {dt.datetime.utcnow():%Y-%m-%d %H:%M} UTC from a GitHub-hosted runner", ""]
+          found, sample = [], None
+          d = dt.date(2026, 10, 2)
+          days = [d - dt.timedelta(days=i) for i in range(0, 60)]
+          s = requests.Session(); s.headers["User-Agent"] = "Mozilla/5.0"
+          for day in days:
+              for t in tracks:
+                  u = base.format(y=day.year, dm=f"{day:%d%m}", t=t, r=1)
+                  try:
+                      r = s.get(u, timeout=20)
+                  except Exception as e:
+                      L.append(f"- {u}: {type(e).__name__}"); continue
+                  if r.status_code == 200 and r.content[:4] == b"%PDF":
+                      n = 1
+                      for k in range(2, 13):
+                          rr = s.head(base.format(y=day.year, dm=f"{day:%d%m}", t=t, r=k), timeout=20)
+                          if rr.status_code == 200: n = k
+                          else: break
+                      found.append((day, t, n, len(r.content)))
+                      if sample is None: sample = (u, r.content)
+          L += [f"- Meetings found (race 1 exists) in the 60 days to {d}: {len(found)}", ""]
+          L += [f"  - {day} {t}: races 1-{n} (R1 {size:,} bytes)" for day, t, n, size in found]
+          if sample:
+              u, b = sample
+              with pdfplumber.open(io.BytesIO(b)) as pdf:
+                  txt = "\n".join((p.extract_text() or "") for p in pdf.pages[:2])
+                  tables = pdf.pages[0].extract_tables()
+              L += ["", f"## Sample: {u}", "", f"- pages: {len(pdf.pages)}, tables on page 1: {len(tables)}", "", "```", txt[:4000], "```"]
+          else:
+              L += ["", "No PDF reachable (status codes above if any)."]
+          Path("reports").mkdir(exist_ok=True)
+          Path("reports/atc_probe.md").write_text("\n".join(L) + "\n")
+          print("\n".join(L)[:3000])
+          PY
+      - name: Commit report
+        run: |
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add reports/atc_probe.md
+          git commit -m "ATC sectionals probe report" || exit 0
+          git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"
