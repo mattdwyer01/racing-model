@@ -33,7 +33,8 @@ SCORES = ROOT / "data/interim/clear_test_scores_{y}.csv.gz"
 SNAPS = ROOT / "data/interim/dash_snapshots"
 DB = ROOT / "data/db/racing.duckdb"
 SP_BINS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8, 10, 15, 25, 50, 1000]
-MARGINS = [0.0, 0.1, 0.2, 0.3, 0.5]
+MARGINS = [0.0, 0.03, 0.05, 0.1, 0.2]
+OVR = (1.08, 1.6)    # race overround (sum of 1 / SP) kept; outside = bad SP data (about 1,000 races sum below 1.0)
 LAM = [1.0, 0.76, 0.62]
 K = {"Quinella": 0.83, "Exacta": 0.82, "Trifecta": 0.79}
 BOOT = 1000
@@ -50,6 +51,8 @@ def load():
     ok = d.groupby("race_id").agg(n=("run_id", "size"), w=("res_finish", lambda s: (s == 1).sum()),
                                   sp=("sp", lambda s: (s > 1).all()))
     d = d[d["race_id"].isin(ok.index[(ok.n >= 4) & (ok.w == 1) & ok.sp])].copy()
+    ovr = (1 / d["sp"]).groupby(d["race_id"]).transform("sum")
+    d = d[ovr.between(*OVR)].copy()
     d["won"] = (d["res_finish"] == 1).astype(int)
     d["p_b"] = d["blend %"] / 100
     d["p_m"] = d["model %"] / 100
@@ -118,7 +121,9 @@ def order_p(p, order):
     return pr
 
 
-def exotics(d, margins=(0.0, 0.2, 0.5, 1.0)):
+def exotics(d, margins=(0.0, 0.05, 0.1)):
+    """Per race and pool: the blend-selected combinations (from the blend's top 6, edge > m) and, as control, the
+    same number of combinations with the highest SP chance (what a market-following punter would take)."""
     rows = []
     for rid, g in d.groupby("race_id", sort=False):
         g = g.sort_values("p_b", ascending=False)
@@ -128,10 +133,11 @@ def exotics(d, margins=(0.0, 0.2, 0.5, 1.0)):
         if any(len(w) != 1 for w in win):
             continue
         w1, w2, w3 = (int(w[0]) for w in win)
-        top = range(min(6, len(g)))
+        n = min(len(g), 8)
         meta = (g["race_date"].iloc[0], g["grp"].iloc[0], g["sat"].iloc[0], g["tier"].iloc[0], g["year"].iloc[0])
         for pool, k in (("Quinella", 2), ("Exacta", 2), ("Trifecta", 3)):
-            for c in itertools.permutations(top, k):
+            combos = []
+            for c in itertools.permutations(range(n), k):
                 if pool == "Quinella":
                     if c[0] > c[1]:
                         continue
@@ -141,17 +147,23 @@ def exotics(d, margins=(0.0, 0.2, 0.5, 1.0)):
                 else:
                     cb, cs = order_p(pb, c), order_p(ps, c)
                     hit = tuple(c) == (w1, w2, w3)[:k]
-                edge = cb * K[pool] / cs - 1
-                if edge > margins[0]:
-                    rows.append((rid, pool, *meta, edge, cs, cb, hit, K[pool] / cs))
-    return pd.DataFrame(rows, columns=["race_id", "pool", "race_date", "grp", "sat", "tier", "year", "edge",
-                                       "p_sp_c", "p_b_c", "hit", "div"])
+                combos.append((c, cb, cs, hit, max(c) < 6))
+            by_sp = sorted(combos, key=lambda x: -x[2])
+            for m in margins:
+                sel = [x for x in combos if x[4] and x[1] * K[pool] / x[2] - 1 > m]
+                if not sel:
+                    continue
+                for tag, xs in (("model", sel), ("SP control", by_sp[:len(sel)])):
+                    rows.append((rid, pool, m, tag, *meta, len(xs), sum(x[3] for x in xs), sum(x[2] for x in xs),
+                                 sum(K[pool] / x[2] for x in xs if x[3])))
+    return pd.DataFrame(rows, columns=["race_id", "pool", "margin", "picks", "race_date", "grp", "sat", "tier", "year",
+                                       "combos", "hits", "p_sp_sum", "ret"])
 
 
 def ex_summary(e):
-    roi = lambda g: 100 * ((g["hit"] * g["div"]).sum() / len(g) - 1)  # noqa: E731
-    return {"combos": len(e), "races": e["race_id"].nunique(), "hits": int(e["hit"].sum()),
-            "hits / SP-expected": round(e["hit"].sum() / e["p_sp_c"].sum(), 3),
+    roi = lambda g: 100 * (g["ret"].sum() / g["combos"].sum() - 1)  # noqa: E731
+    return {"combos": int(e["combos"].sum()), "races": e["race_id"].nunique(), "hits": int(e["hits"].sum()),
+            "hits / SP-expected": round(e["hits"].sum() / e["p_sp_sum"].sum(), 3),
             "est ROI %": round(roi(e), 1), "95%": boot_days(e, roi)}
 
 
@@ -172,12 +184,12 @@ def main():
     L.append(table([{"margin": m, **win_summary(win_bets(d, "p_b", "sp", m), "sp")} for m in MARGINS]))
     L += ["", "Model alone (model chance x SP > 1 + margin):", ""]
     L.append(table([{"margin": m, **win_summary(win_bets(d, "p_m", "sp", m), "sp")} for m in MARGINS]))
-    base = win_bets(d, "p_b", "sp", 0.2)
+    base = win_bets(d, "p_b", "sp", 0.05)
     for col, name in (("grp", "state"), ("sat", "day"), ("tier", "meeting tier"), ("year", "year")):
-        L += ["", f"Blend, margin 0.2, by {name}:", ""]
+        L += ["", f"Blend, margin 0.05, by {name}:", ""]
         L.append(table([{name: k, **win_summary(g, "sp")} for k, g in base.groupby(col)]))
     sat = base[base["sat"] == "Saturday"]
-    L += ["", "Blend, margin 0.2, Saturdays by meeting tier:", ""]
+    L += ["", "Blend, margin 0.05, Saturdays by meeting tier:", ""]
     L.append(table([{"tier": k, **win_summary(g, "sp")} for k, g in sat.groupby("tier")]))
 
     # fixed prices (dashboard snapshots, >= 10 min before the start)
@@ -203,17 +215,17 @@ def main():
 
     # exotics: 2025-2026 (enumeration is slow)
     ex = exotics(d[d["year"] >= 2025])
-    L += ["", "## Exotic overlays (blend order chances vs SP order chances, estimated dividends), 2025-2026", ""]
+    L += ["", "## Exotic overlays vs the same number of combinations picked by SP (estimated dividends), 2025-2026",
+          "", "- est ROI uses k / SP chance as the dividend; the gap to the SP control is the firmer number.", ""]
     rows = []
-    for pool, g in ex.groupby("pool"):
-        for m in (0.0, 0.2, 0.5, 1.0):
-            rows.append({"pool": pool, "margin": m, **ex_summary(g[g["edge"] > m])})
+    for (pool, m, tag), g in ex.groupby(["pool", "margin", "picks"]):
+        rows.append({"pool": pool, "margin": m, "picks": tag, **ex_summary(g)})
     L.append(table(rows))
     for col, name in (("grp", "state"), ("sat", "day"), ("tier", "meeting tier")):
-        L += ["", f"Exotics, margin 0.2, by {name}:", ""]
+        L += ["", f"Exotics, margin 0.05, by {name}:", ""]
         rows = []
-        for (pool, k), g in ex[ex["edge"] > 0.2].groupby(["pool", col]):
-            rows.append({"pool": pool, name: k, **ex_summary(g)})
+        for (pool, k, tag), g in ex[ex["margin"] == 0.05].groupby(["pool", col, "picks"]):
+            rows.append({"pool": pool, name: k, "picks": tag, **ex_summary(g)})
         L.append(table(rows))
     OUT.write_text("\n".join(L) + "\n")
     print("\n".join(L))
