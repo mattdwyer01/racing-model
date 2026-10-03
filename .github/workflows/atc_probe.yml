@@ -15,7 +15,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m pip install --quiet requests pdfplumber
@@ -27,21 +27,33 @@ jobs:
           base = "https://feed.australianturfclub.com.au/sectionals/swiss-timing/{y}/{dm}{t}-{r}.pdf"
           tracks = ["RAND", "ROSE", "CANT", "WARW"]
           L = ["# ATC Swiss Timing sectionals probe", "", f"- Run {dt.datetime.utcnow():%Y-%m-%d %H:%M} UTC from a GitHub-hosted runner", ""]
-          found, sample = [], None
+          found, sample, errors = [], None, 0
           d = dt.date(2026, 10, 2)
-          days = [d - dt.timedelta(days=i) for i in range(0, 60)]
+          # Saturdays and Wednesdays only (ATC metro days), last 8 weeks; first a reachability check
+          days = [d - dt.timedelta(days=i) for i in range(0, 56) if (d - dt.timedelta(days=i)).weekday() in (2, 5)]
+          for u in ["https://feed.australianturfclub.com.au/", "https://www.australianturfclub.com.au/"]:
+              try:
+                  r = requests.get(u, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                  L.append(f"- reach {u}: HTTP {r.status_code}, {len(r.content)} bytes")
+              except Exception as e:
+                  L.append(f"- reach {u}: {type(e).__name__}: {str(e)[:120]}")
           s = requests.Session(); s.headers["User-Agent"] = "Mozilla/5.0"
           for day in days:
               for t in tracks:
                   u = base.format(y=day.year, dm=f"{day:%d%m}", t=t, r=1)
                   try:
-                      r = s.get(u, timeout=20)
+                      r = s.get(u, timeout=8)
                   except Exception as e:
-                      L.append(f"- {u}: {type(e).__name__}"); continue
+                      L.append(f"- {u}: {type(e).__name__}"); errors += 1
+                      if errors >= 6:
+                          break
+                      continue
+                  if r.status_code != 200:
+                      L.append(f"- {u}: HTTP {r.status_code}")
                   if r.status_code == 200 and r.content[:4] == b"%PDF":
                       n = 1
                       for k in range(2, 13):
-                          rr = s.head(base.format(y=day.year, dm=f"{day:%d%m}", t=t, r=k), timeout=20)
+                          rr = s.head(base.format(y=day.year, dm=f"{day:%d%m}", t=t, r=k), timeout=8)
                           if rr.status_code == 200: n = k
                           else: break
                       found.append((day, t, n, len(r.content)))
