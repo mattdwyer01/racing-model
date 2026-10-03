@@ -232,6 +232,25 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     blend -0.0001 (significant, tiny); heavy 9-10 (1,248 races) model alone -0.0033 (-0.0079 to +0.0015), blend
     -0.0006 (-0.0013 to 0.0000); soft 7-8 blend -0.0004 n.s.; sire inputs carry part of it. Production edge vs SP by
     going: good/soft 1-6 -0.0017 (significant), soft 7-8 +0.0002, heavy +0.0025 (n.s.): no edge on wet tracks.
+  - Model-improvement round (3 Oct 2026, user "test all"):
+    - Betting on the model's own probabilities (`tools/model_bet_test.py`, `model_bet_test.md`, 67,391 races 2023 to Sep
+      2026, clear_test OOS scores): win overlays at SP (blend x SP > 1 + m) no edge (-4%, -13 to +4 at m 0); first run
+      showed a fake +56% from ~1,000 races whose SPs sum below 100% (now dropped: overround kept 1.08-1.6). At the
+      dashboard's stale fixed prices +12% but the same bets lose 28% at SP (stale prices, not edge). Exotics by blend
+      order chances vs the same number of SP-picked combos: level at low margins; at margin 0.1 trifecta hits 1.91x
+      SP-implied vs 1.58x, exacta 1.84x vs 1.48x (estimated dividends too generous: SP picks also show profit). Lead only.
+    - Price movement (`tools/price_drift_test.py`, `price_drift_test.md`, 656 races 18 Sep to 3 Oct, TopRate TAB
+      snapshots, bet price median 160 min before): drift adds -0.0016 (n.s.); model on top of that price +0.0052 (n.s.).
+      Needs the Vultr TAB log: `tab_price_archive.yml` is skipped every night (VULTR_RUNNER not set for this repo).
+    - Gear / wpr_nett rerun to 2 Oct (`gear_wpr_test_oct.md`): wpr_nett model alone -0.0074 (-0.0106 to -0.0043, every
+      state), blend +0.0001 n.s. (same as before). Gear (1 Sep to 2 Oct, 1,430 races) +0.0147 worse, unstable signs.
+    - WPR revisions (`tools/wpr_revision_test.py`, `wpr_revision_test.md`, 35,334 runners Apr to Oct 2026): 93% of
+      last-start WPRs differ from the race-morning value (mean |change| 1.8, 19% > 3), old runs too (TopRate re-rates
+      history). No flattering: revised-up horses ran A/E 0.88 next start. Train / serve mismatch; keep dated copies.
+    - Bad SPs: 436 VIC/SA/QLD races since 2023 have SPs summing below 100% (impossible); QLD has 1,533 races over 160%
+      (thin country markets, likely real). Exclude the first group from training and evaluation.
+    - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
+      try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
