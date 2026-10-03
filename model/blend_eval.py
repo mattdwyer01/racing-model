@@ -98,6 +98,7 @@ def feats_for(v, cols):
 BOOT = 2000
 RATING = False          # set by --rating
 LOGIT_ONLY = False      # set by --logit-only (skip the GBM fits)
+SP_CHECK = False        # set by --sp-check (also fit blend / SP calibration without impossible-SP races)
 RATING_TABLES = {}
 KEY = ["race_id", "race_date", "state", "fold"]
 
@@ -126,9 +127,19 @@ def run_fold(e, y, variants):
     assert tr.race_date.max() < te.race_date.min(), "train must end before the test period"
     cut = tr["race_date"].quantile(0.75)
     inner, bl = _race(tr[tr.race_date <= cut].copy()), _race(tr[tr.race_date > cut].copy())
+    if SP_CHECK:
+        # races whose SPs sum below 100% (impossible market: bad SP data); blend / calibration refitted without them
+        ovr = lambda df: (1 / df["sp"]).groupby(df["race_id"]).transform("sum")  # noqa: E731
+        bl_ok = _race(bl[ovr(bl) >= 1.0].copy())
+        te_ok = ovr(te) >= 1.0
     out = {"SP raw": race_ll(te["p_sp"].to_numpy(), te)}
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
     out["SP calibrated"] = race_ll(om._softmax(c * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
+    if SP_CHECK:
+        c2 = clogit.fit(bl_ok[["log_p_sp"]].to_numpy(float), bl_ok["race"].to_numpy(), bl_ok["won"].to_numpy())[0]
+        out["SP calibrated (SP-checked fit)"] = race_ll(om._softmax(c2 * te["log_p_sp"].to_numpy(),
+                                                                    te["race"].to_numpy()), te)
+        out["sp_ok"] = te.loc[te.won == 1, "race_id"].map(te_ok.groupby(te["race_id"]).first()).astype(float).to_numpy()
     weights = {"SP calibration c": c, "blend window": f"{bl.race_date.min():%d %b %Y} to {bl.race_date.max():%d %b %Y}"}
     # per-state weights (QLD, VIC/SA, and NSW / WA when in scope), same blend window
     grp_bl, grp_te = state_group(bl["state"]), state_group(te["state"])
@@ -165,6 +176,13 @@ def run_fold(e, y, variants):
             out[f"{v}: blend {name}"] = race_ll(
                 om._softmax(a * np.log(p_te) + b * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
             weights[f"{v} {name} a"], weights[f"{v} {name} b"] = a, b
+            if SP_CHECK:
+                ok = (ovr(bl) >= 1.0).to_numpy()
+                a2, b2 = clogit.fit(np.c_[np.log(p_bl[ok]), bl_ok["log_p_sp"].to_numpy(float)], bl_ok["race"].to_numpy(),
+                                    bl_ok["won"].to_numpy())
+                out[f"{v}: blend {name} (SP-checked fit)"] = race_ll(
+                    om._softmax(a2 * np.log(p_te) + b2 * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
+                weights[f"{v} {name} a, SP-checked"], weights[f"{v} {name} b, SP-checked"] = a2, b2
             ab = {}
             for g_ in groups:
                 m_ = grp_bl == g_
@@ -217,13 +235,16 @@ def main():
     ap.add_argument("--tag", default=None, help="suffix for the report and per-race file (default: variants)")
     ap.add_argument("--rating", action="store_true", help="add the explicit rating model (rating.py) to the baseline")
     ap.add_argument("--logit-only", action="store_true", help="skip the GBM fits (faster)")
+    ap.add_argument("--sp-check", action="store_true",
+                    help="also fit the blend and SP calibration without races whose SPs sum below 100%%")
     ap.add_argument("--report-only", action="store_true",
                     help="rebuild the report from the saved per-race file and weights (no refits)")
     args = ap.parse_args()
     global RATING
     RATING = args.rating
-    global LOGIT_ONLY
+    global LOGIT_ONLY, SP_CHECK
     LOGIT_ONLY = args.logit_only
+    SP_CHECK = args.sp_check
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
     om.LEADER_VALUE = any(v in variants for v in ("lv", "wet", "wet-sire"))
