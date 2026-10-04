@@ -334,6 +334,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       ADOPTED (user, 5 Oct, TopRate PR #295): Combo removed; the column is now "Rating" = RM chance with the WPR Nett layer on
       the WPR scale (field mean projection + 8.205 x (ln p - mean ln p)); lines 4.5 / 9.5 (same coverage as Combo 4 / 8);
       bet_log.py win rule / exotics use the same rating.
+    - WPR projection v2 (`model/wpr_model.py`, `wpr_model.md`, walk-forward 2023-26, 38,310 races): LightGBM on the run's WPR
+      with production inputs + rating mu + race context, spread model, simulated win chances. MAE 6.59 vs prior average 6.92;
+      vs TopRate projection (873 pre-race races) MAE 6.00 vs 6.50, bias -0.3 vs +1.9, top pick level (27.5%). Picking winners:
+      top pick 28.0% vs RM 29.3% (2025-26 gap 0.3), log loss 1.9413 fitted / 1.9883 simulated vs RM 1.9227. Spread a bit
+      narrow (60% within 1 sd). A better Proj column, not a replacement for the Rating.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
