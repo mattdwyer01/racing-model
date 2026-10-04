@@ -323,6 +323,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       per-runner `vu` / `vs` to racing_model.json (p = softmax(vs x log p_price + vu)); TopRate `bet_log.py` logs value >= 1.0
       at the fixed price 12 min out, VIC/SA/QLD, not bush, $10 notional, to `value_log.csv` (logged only). Fires on ~0.8% of
       runners (~13 a week). Refit params yearly.
+      Volume (5 Oct): value cut below 1.0 loses at once (0.97 -4.1%, 0.95 -7.0%, 0.90 -9.9%); by class at 1.0: country +8.8%,
+      provincial +11.5%, metro -7.4%, so the value log now includes bush meetings, price cap $51 (TopRate PR #293). NSW / WA
+      (`tools/pace_leader_extra.py`, `value_model.py --five-states`): VIC/SA/QLD-fitted model on NSW 536 bets +2.5% (-14 to +19),
+      WA 122 bets -23%; a five-state fit is less stable (VIC/SA/QLD 2026 -22%). NSW added to the value log (PR #294), WA out.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
