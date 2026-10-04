@@ -312,6 +312,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       top-20% GPS extra ground A/E 1.05-1.12, held up 1.04-1.05, laid / hung 1.03-1.08, overraced, vet issue); 'every chance'
       video comment is over-bet (0.93-0.97). Closing L600, WPR trend, sire wet / staying index: no consistent edge. Top pick,
       $2+, 9-flag score 5+: 713 bets +2.8% (-13 to +19), positive in both periods; nothing clears break-even convincingly at SP.
+    - Value models (`tools/value_model.py`, `value_model.md`): conditional logit with log SP + flags (17 positive, 4 negative) +
+      log SP x race conditions, walk-forward by year (test 2024 to Sep 2026, 26,092 races). Log loss vs calibrated SP: RM value
+      -0.0007 n.s. (QLD -0.0019), Proj value (prior WPR / adj / bias, no RM) -0.0007 n.s. Betting value >= 1.0 at SP:
+      Proj value 1,892 bets +2.4% (-7 to +12; 2024 -3, 2025 +13, 2026 +9), within 4 no FS 1,073 +3.8%; RM value -3.4%
+      (2026 -20%). Cuts above 1.05 too thin / unstable. First fully out-of-sample rule near or above break-even at SP.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
