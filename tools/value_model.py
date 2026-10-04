@@ -197,5 +197,68 @@ def fit_live():
     print("\n".join(L))
 
 
+
+def five_states():
+    """Value model walk-forward on VIC/SA/QLD + NSW/WA (tools/pace_leader_extra.py), through model/value_live.py.
+    Fits: (a) VIC/SA/QLD only, scored everywhere; (b) all five states. ROI at value >= 1.0 (SP <= $51) by state."""
+    import json
+    import duckdb
+    from model import value_live as vl
+    con = duckdb.connect(str(ROOT / "data/db/racing.duckdb"), read_only=True)
+    p = pd.concat([pd.read_parquet(ROOT / "data/interim/pace_leader_oos.parquet"),
+                   pd.read_parquet(ROOT / "data/interim/pace_leader_oos_nswwa.parquet")], ignore_index=True)
+    p["run_id"] = p["run_id"].astype(str)
+    p = p[(p["race_date"] < "2026-10-01") & p["won"].notna() & (p["sp"] > 1)].drop_duplicates("run_id").copy()
+    p["won"] = p["won"].astype(int)
+    ok = p.groupby("race_id").agg(n=("run_id", "size"), w=("won", "sum"), ovr=("sp", lambda s: (1 / s).sum()))
+    p = p[p["race_id"].isin(ok.index[(ok.n >= 4) & (ok.w == 1) & (ok.ovr >= 1.08) & (ok.ovr <= 1.6)])]
+    f = vl.facts(con, "2023-01-01")
+    x = p.drop(columns=["state", "going_num"]).merge(f, on="run_id", how="left")
+    x["state"] = x["state"].fillna(pd.Series(p.set_index("run_id")["state"].reindex(x["run_id"]).to_numpy(), index=x.index))
+    x["dist"] = x["dist"].fillna(x["distance"])
+    inv = 1 / x["sp"]
+    x["lsp"] = np.log(inv / inv.groupby(x["race_id"]).transform("sum"))
+    thr = json.loads(vl.PARAMS.read_text())["thresholds"]
+    x = vl.design(x, thr).sort_values(["race_id", "run_id"]).reset_index(drop=True)
+    x["year"] = pd.to_datetime(x["race_date"]).dt.year
+    x["p_ctl"] = x.groupby(pd.cut(x["sp"], [1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8, 10, 15, 25, 50, 1000]), observed=True)["won"].transform("mean")
+    core = x["state"].isin(["VIC", "SA", "QLD"])
+    # (a) fitted on VIC/SA/QLD, scored on all: fit per year on core rows, apply to every row of the test year
+    pa = pd.Series(np.nan, index=x.index)
+    for y in (2024, 2025, 2026):
+        tr = x[(x["year"] < y) & core]
+        b = clogit.fit(tr[vl.COLS].to_numpy(float), pd.factorize(tr["race_id"])[0], tr["won"].to_numpy(), l2=1e-3)
+        te = x[x["year"] == y]
+        pa[te.index] = clogit.probs(te[vl.COLS].to_numpy(float), pd.factorize(te["race_id"])[0], b)
+    pb, _ = walk(x, vl.COLS)                       # (b) fitted on all five states
+    te = x["year"] >= 2024
+    weeks = (x.loc[te, "race_date"].max() - x.loc[te, "race_date"].min()).days / 7
+    rows = []
+    for lab, pr in (("fit VIC/SA/QLD", pa), ("fit all 5 states", pb)):
+        v = pr * x["sp"]
+        for st in ("VIC/SA/QLD", "NSW", "WA", "NSW + WA", "all 5"):
+            sm = {"VIC/SA/QLD": core, "NSW": x["state"] == "NSW", "WA": x["state"] == "WA",
+                  "NSW + WA": x["state"].isin(["NSW", "WA"]), "all 5": x["state"].notna()}[st]
+            b = x[te & sm & (v >= 1.0) & (x["sp"] <= 51)]
+            if len(b) < 30:
+                continue
+            yrs = {str(y): round(100 * ((t["won"] * t["sp"]).mean() - 1), 1) for y, t in b.groupby("year")}
+            rows.append({"model": lab, "states": st, "bets": len(b), "per week": round(len(b) / weeks, 1),
+                         "A/E pm": round(b["won"].sum() / b["p_ctl"].sum(), 3),
+                         "ROI %": round(100 * ((b["won"] * b["sp"]).mean() - 1), 1), "95%": roi_ci(b), **yrs})
+    t = pd.DataFrame(rows)
+    L = [f"## NSW / WA (walk-forward 2024 to Sep 2026, value >= 1.0, SP <= $51)", "",
+         f"- {x.loc[te, 'race_id'].nunique():,} test races ({x.loc[te & ~core, 'race_id'].nunique():,} NSW / WA).", "",
+         t.to_markdown(index=False), ""]
+    with OUT.open("a") as fh:
+        fh.write("\n" + "\n".join(L) + "\n")
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
-    fit_live() if "--fit-live" in sys.argv else main()
+    if "--fit-live" in sys.argv:
+        fit_live()
+    elif "--five-states" in sys.argv:
+        five_states()
+    else:
+        main()

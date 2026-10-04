@@ -323,6 +323,26 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       per-runner `vu` / `vs` to racing_model.json (p = softmax(vs x log p_price + vu)); TopRate `bet_log.py` logs value >= 1.0
       at the fixed price 12 min out, VIC/SA/QLD, not bush, $10 notional, to `value_log.csv` (logged only). Fires on ~0.8% of
       runners (~13 a week). Refit params yearly.
+      Volume (5 Oct): value cut below 1.0 loses at once (0.97 -4.1%, 0.95 -7.0%, 0.90 -9.9%); by class at 1.0: country +8.8%,
+      provincial +11.5%, metro -7.4%, so the value log now includes bush meetings, price cap $51 (TopRate PR #293). NSW / WA
+      (`tools/pace_leader_extra.py`, `value_model.py --five-states`): VIC/SA/QLD-fitted model on NSW 536 bets +2.5% (-14 to +19),
+      WA 122 bets -23%; a five-state fit is less stable (VIC/SA/QLD 2026 -22%). NSW added to the value log (PR #294), WA out.
+    - Replacing Combo (`tools/rating_replace_test.py`, `rating_replace_test.md`, 1,753 pre-race races): top pick Combo 29.3%,
+      RM + WPR Nett 29.5% (+0.2, -1.5 to +1.8), RM 29.1%, projection 26.6%, projection v2 (new base + Nett, fitted) 27.8%.
+      Winners inside the 4 line at Combo's runner count: Combo 54.9%, RM + Nett 54.4%, projections 49-51%. Projection rework
+      cannot match Combo; RM + Nett can.
+      ADOPTED (user, 5 Oct, TopRate PR #295): Combo removed; the column is now "Rating" = RM chance with the WPR Nett layer on
+      the WPR scale (field mean projection + 8.205 x (ln p - mean ln p)); lines 4.5 / 9.5 (same coverage as Combo 4 / 8);
+      bet_log.py win rule / exotics use the same rating.
+    - WPR projection v2 (`model/wpr_model.py`, `wpr_model.md`, walk-forward 2023-26, 38,310 races): LightGBM on the run's WPR
+      with production inputs + rating mu + race context, spread model, simulated win chances. MAE 6.59 vs prior average 6.92;
+      vs TopRate projection (873 pre-race races) MAE 6.00 vs 6.50, bias -0.3 vs +1.9, top pick level (27.5%). Picking winners:
+      top pick 28.0% vs RM 29.3% (2025-26 gap 0.3), log loss 1.9413 fitted / 1.9883 simulated vs RM 1.9227. Spread a bit
+      narrow (60% within 1 sd). A better Proj column, not a replacement for the Rating.
+      LIVE (5 Oct): `wpr_model.fit_live` (last 3 years of the production training frame) / `predict` in `race_card.score`
+      (sd x 1.12 to fix the narrow spread); racing_model.json `wp` / `ws`; TopRate Proj column = `wp` (Base + Adj kept equal to
+      Proj, spread in the tooltip; TopRate PR #296). Local build: every upcoming runner filled, corr 0.91 with TopRate's projection,
+      1.7 lower on average.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
