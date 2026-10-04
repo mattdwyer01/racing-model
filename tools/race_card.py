@@ -25,7 +25,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import figure, production, race_sim, value_live, wpr_nett_layer  # noqa: E402
+from model import figure, production, race_sim, value_live, wpr_model, wpr_nett_layer  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import eval_set  # noqa: E402
 
@@ -144,7 +144,7 @@ def score(con, train_end, dates, track=None):
     om.EXTRA_PROJ, om.KEEP_SIM = LITE or True, True
     production.use_training_scope()      # VIC/SA/QLD + production.TRAIN_EXTRA_STATES (all states)
     raw = om.build_features(con, train_end, light="no_posmap", lean=True)
-    m, _ = production.train(con, train_end, e=om.add_context(eval_set(raw)))
+    m, e_train = production.train(con, train_end, e=om.add_context(eval_set(raw)))
     info = con.sql(INFO_SQL.format(d=", ".join(f"date '{x}'" for x in dates))).df()
     if track:
         info = info[info["track"].str.contains(track, case=False)]
@@ -177,6 +177,13 @@ def score(con, train_end, dates, track=None):
     lvl = c["h_wpr"].where(c["h_none"] == 0).groupby(c["race_id"]).transform("mean")
     c["projected rating"] = lvl + c["rating vs field"]
     c["race-day adj"] = c.get("race-day projection", 0) + c.get("track bias", 0)
+    try:                                 # WPR projection v2 (model/wpr_model.py): the WPR each horse should run, +/- sd
+        wm = wpr_model.fit_live(e_train, m["rating"], train_end)
+        c = c.merge(wpr_model.predict(wm, pr, m["rating"]), on="run_id", how="left")
+        del wm
+    except Exception as e:  # noqa: BLE001
+        print(f"WPR projection skipped: {type(e).__name__}: {str(e)[:160]}", flush=True)
+    del e_train
     try:                                 # value model (model/value_live.py); never breaks a card / dashboard build
         c = add_value(con, c, rows, raw, train_end)
     except Exception as e:  # noqa: BLE001

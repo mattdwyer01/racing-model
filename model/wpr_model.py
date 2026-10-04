@@ -34,6 +34,7 @@ PARAMS = dict(objective="l2", learning_rate=0.05, num_leaves=63, min_data_in_lea
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1, deterministic=True, force_row_wise=True,
               seed=7)
 rng = np.random.default_rng(3)
+SD_SCALE = 1.12   # walk-forward test: 60% of runs within +/- 1 raw sd; x1.12 brings that to ~68% (normal)
 
 
 def add_mu_abs(rm, df):
@@ -96,6 +97,34 @@ def fold(con, y):
     keep = ["run_id", "race_id", "race_date", "state", "won", "sp", "y_wpr", "h_wpr", "h_none", "mu_abs", "wpr_mean",
             "wpr_sd", "p_sim", "p_rm"]
     return te[[c for c in keep if c in te]].assign(fold=y), imp
+
+
+def fit_live(e, rm, train_end, years=3):
+    """Live fit for the dashboard: mean and spread models on the last `years` of training rows (e = the production
+    training frame, om.add_context(eval_set(raw)); rm = production rating model)."""
+    end = pd.Timestamp(train_end)
+    tr = production._race(e[(e["race_date"] < end) & (e["race_date"] >= end - pd.DateOffset(years=years))].copy())
+    tr = add_mu_abs(rm, tr)
+    feats = [c for c in dict.fromkeys(production.COLS + production.MU + CTX) if c in tr]
+    lab = tr["y_wpr"].notna()
+    cut = tr["race_date"].quantile(0.75)
+    inner, hold = lab & (tr["race_date"] <= cut), lab & (tr["race_date"] > cut)
+    m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"]), 600)
+    res = (tr.loc[hold, "y_wpr"] - m1.predict(tr.loc[hold, feats].astype(float))).abs()
+    ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(tr.loc[hold, feats].astype(float), res), 300)
+    m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"]), 600)
+    return {"mean": m, "sd": ms, "feats": feats}
+
+
+def predict(wm, rows, rm):
+    """Projected WPR and its spread (sd) for card rows (production features, as race_card.prep builds them)."""
+    x = add_mu_abs(rm, rows.copy())
+    for c in wm["feats"]:
+        if c not in x:
+            x[c] = np.nan
+    X = x[wm["feats"]].astype(float)
+    sd = np.clip(wm["sd"].predict(X) * np.sqrt(np.pi / 2) * SD_SCALE, 2.0, 25.0)
+    return pd.DataFrame({"run_id": x["run_id"].to_numpy(), "wpr_proj": wm["mean"].predict(X), "wpr_sd": sd})
 
 
 def ll(p, d):
