@@ -110,7 +110,11 @@ def main():
     hist = ROOT / "data/raw/live/toprate_price_history.csv"
     _download("toprate_price_history.csv", hist)
     archive_prices(hist)
-    wpr_changed = archive_wpr([prev] + list(v for k, v in files.items() if k.startswith("race_results_")), today)
+    try:                                            # never let the archive break the dashboard build
+        wpr_changed = archive_wpr([prev] + list(v for k, v in files.items() if k.startswith("race_results_")), today)
+    except Exception as e:
+        print(f"dated WPR archive skipped: {e!r}", flush=True)
+        wpr_changed = False
     if use_store:
         if wpr_changed:
             store.put(WPR_DATED, WPR_DATED.name)
