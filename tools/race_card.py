@@ -123,7 +123,10 @@ def add_value(con, c, rows, raw, train_end):
         return c
     x = rows[["run_id", "race_id", "race_date", "proj_adj", "bias_adj", "h_wpr", "h_none", "dist"]].copy()
     f = value_live.facts(con, str(pd.Timestamp(x["race_date"].min()).date()))
+    key = x["run_id"]
+    x["run_id"] = x["run_id"].astype(str)
     x = x.merge(f, on="run_id", how="left")
+    x["run_id"] = key.to_numpy()
     thr = dict(params["thresholds"])
     tr = raw[raw["core_scope"] & (raw["race_date"] < train_end) &
              (raw["race_date"] >= pd.Timestamp(train_end) - pd.Timedelta(days=730))]
