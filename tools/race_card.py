@@ -25,13 +25,13 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import figure, production, race_sim  # noqa: E402
+from model import figure, production, race_sim, wpr_nett_layer  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import eval_set  # noqa: E402
 
 INFO_SQL = """
 select r.run_id, r.horse, r.barrier, r.jockey, r.trainer, r.weight_kg, ra.track, ra.distance, ra.race_class,
-  ra.going, ra.race_id, t.race_no, l.fixed_win_price, l.open_price
+  ra.going, ra.race_id, t.race_no, l.fixed_win_price, l.open_price, l.wpr_nett
 from runs r join races ra using (race_id) left join race_times t on t.race_id = ra.race_id
 left join live_runners l on l.run_id = r.run_id
 where r.race_date in ({d}) and not r.is_trial_or_jumpout
@@ -93,6 +93,27 @@ def model_health(raw, rows, train_end):
     return {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
 
 
+def wpr_nett_on_top(c, pr, m):
+    """TopRate wpr_nett layer on the model's chances (model/wpr_nett_layer.py); the blend is re-formed from the
+    layered chance with the production weights. `model % (base)` keeps the production model's own chance."""
+    if not wpr_nett_layer.ENABLED or "wpr_nett" not in c or c["wpr_nett"].notna().sum() == 0:
+        return c
+    c = c.copy()
+    c["model % (base)"] = c["model %"]
+    p = wpr_nett_layer.apply(c["race_id"], c["model %"] / 100, c["wpr_nett"])
+    c["model %"], c["model $"] = 100 * p, 1 / p
+    if "blend %" in c and "log_p_mkt" in pr:
+        mk = pd.to_numeric(c["run_id"].map(pr.drop_duplicates("run_id").set_index("run_id")["log_p_mkt"]), errors="coerce")
+        has = mk.notna().groupby(c["race_id"]).transform("all")
+        z = m["a"] * np.log(np.clip(p, 1e-12, 1)) + m["b"] * mk.fillna(0)
+        e = np.exp(z - z.groupby(c["race_id"]).transform("max"))
+        pb = (e / e.groupby(c["race_id"]).transform("sum")).where(has)
+        c["blend %"], c["blend $"] = 100 * pb, 1 / pb
+        if "SP" in c:
+            c["edge vs SP"] = pb * c["SP"] - 1
+    return c
+
+
 def score(con, train_end, dates, track=None):
     """Card rows for every in-scope race on `dates` (all states, production.CARD_ALL_STATES) with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
@@ -114,6 +135,7 @@ def score(con, train_end, dates, track=None):
         m["health"] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
     pr = prep(rows)
     c = production.card(m, pr, market="log_p_mkt").merge(info, on=["run_id", "race_id"])
+    c = wpr_nett_on_top(c, pr, m)
     c = c.merge(pr[["run_id", "race_date", "h_wpr", "h_none", "proj_gl_v4"] + [f for f in POS_FEATS if f in pr]],
                 on="run_id", how="left")
     # position value (position map: expected value of the projected position and width, WPR points vs the race)

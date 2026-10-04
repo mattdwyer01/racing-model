@@ -28,7 +28,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 from model import clogit, figure  # noqa: E402
 import race_card  # noqa: E402
 
-START, END = "2026-04-26", "2026-09-23"
+import os
+START, END = "2026-04-26", os.environ.get("GEAR_END", "2026-09-23")
 GEAR = {"g_blink_ft": "Blinkers First Time", "g_blink_off": "Blinkers Off", "g_winkers_ft": "Winkers First Time",
         "g_tongue_ft": "Tongue Tie First Time", "g_earmuff_ft": "Ear Muffs", "g_gelded": "Gelded"}
 BOOT = 2000
@@ -148,7 +149,7 @@ def main():
          "## Gear sub-window: paired differences", "", pd.DataFrame(rows_g).to_markdown(index=False), "",
          "## Fitted weights, whole window (half 1 fit, half 2 fit)", "", pd.Series(coefs).unstack().to_markdown(), "",
          "## Fitted weights, gear sub-window (half 1 fit, half 2 fit)", "", pd.Series(coefs_g).unstack().to_markdown()]
-    (ROOT / "reports/gear_wpr_test.md").write_text("\n".join(L) + "\n")
+    (ROOT / os.environ.get("GEAR_OUT", "reports/gear_wpr_test.md")).write_text("\n".join(L) + "\n")
     print("\n".join(L))
 
 

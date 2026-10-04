@@ -36,7 +36,7 @@ om.WET_FORM = True
 
 GL = ["h_gl", "h_gl_miss", "h_rail"]     # past extra ground / width credit (QLD GPS); kept by decision, not for blend gain
 COLS = list(dict.fromkeys(om.BASE + om.JT + om.PROJ + extra_history.CM_FEATS + GL + leader_value.FEATS +
-                          wet_form.FEATS))
+                          wet_form.FEATS + ["sx_wet"]))
 MU = ["r_mu", "r_sigma"]   # rating model (rating.py): expected WPR vs the field and its uncertainty (adopted Sep 2026)
 WPR_LEVEL = ["h_wpr", "dm", "fig_last", "best3", "best10", "mean3", "r_mu"]
 GROUPS = {
@@ -48,7 +48,7 @@ GROUPS = {
              "trial_marg", "trial_pos_debut", "trial_marg_debut"],
     "race-day projection": ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl",
                             "proj_adj", "tdx_settle", "tdx_perf", "early_rank2", "wide_x_slow", "nb_diff_in",
-                            "nb_diff_out"] + leader_value.FEATS,
+                            "nb_diff_out", "sx_wet"] + leader_value.FEATS,
     "track bias": ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "bias_adj"],
     "jockey / trainer": ["j_ae", "j_sr", "j90_ae", "t_ae", "t_sr", "c_ae", "tfu_ae", "h_ae", "j_change", "j_upgrade"],
     "comments": extra_history.CM_FEATS,
@@ -121,6 +121,9 @@ def train(con, train_end, e=None):
     rm_in = fit_mu(inner)
     inner, bl = add_mu(rm_in, inner), add_mu(rm_in, bl)
     b_in = _fit_raw(inner, COLS + MU)
+    # blend weights / SP calibration without races whose SPs sum below 100% (impossible: bad SP data; 0.6% of races;
+    # `blend_eval.py --sp-check`, -0.00002 blend, significant but tiny)
+    bl = _race(bl[(1 / bl["sp"]).groupby(bl["race_id"]).transform("sum") >= 1.0].copy())
     p_bl = np.clip(om._softmax(utility(bl, b_in), bl["race"].to_numpy()), 1e-12, 1)
     a, b = clogit.fit(np.c_[np.log(p_bl), bl["log_p_sp"].to_numpy(float)], bl["race"].to_numpy(), bl["won"].to_numpy())
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]

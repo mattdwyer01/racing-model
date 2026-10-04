@@ -141,6 +141,24 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     Live Combo (our race-day adj + past ground loss in place of TopRate's speed_map / barrier; `combo_lines_test.py live`,
     `combo_lines_live.md`, 695 races 22 Aug to 23 Sep): gap corr 0.990 with the tested Combo, ~5% of runners change
     side of each line; within 10 holds 87% of winners (outside ROI -50%), within 4 holds 54% (A/E 1.01). Lines kept.
+    Quaddie bands (2 Oct, 304 quaddies 22 Aug to 30 Sep, est dividends from SP, 600 cap): inner x outer x first starters
+    grid; first starters hurt almost everywhere, outer 8 beats outer 10 at every inner (4/8 no FS -12% vs 4/10 -39%,
+    user rule 4/10 + FS -47%); inner 2-4 within noise. Dashboard outer line now 8 WPR (TopRate PR #259). Combo cap:
+    300-600 best (-8 to -12%), no cap -30% (14 quaddies over 1,000 combos lose most); all CIs include the 20% take.
+    Real dividends vs the SP estimate (user-reported, 2 Oct): Launceston $48 vs $40 (1.20), Moruya $185 vs $139 (1.33),
+    Pakenham $133 vs $81 (1.64); geometric mean 1.38. At that ratio the 4/8 rule's -12% would be about +21%.
+  - Real TAB dividends: TopRate `tab_dividends.py` logs every pool per race from 2 Oct 2026 (`tab_dividends.csv`; TAB's API
+    serves no past dates). Exotic rules (`tools/exotics_test.py`, `exotics_test.md`, 22 Aug to 1 Oct, 265 meetings, SP-based
+    discounted PL estimate calibrated per pool on 2 Oct's 287 real dividends: real x fair-SP chance Win 0.85, Quinella 0.83,
+    Exacta 0.82, Trifecta 0.79, First Four 0.75, Running Double 0.87, slope ~1): vs the SAME number of runners picked by SP
+    (flexi, paired), box within-4 beats SP in Quinella +8.4 pts (-1.3 to +18.0), Exacta +8.5 (-1.1 to +18.5), Trifecta
+    +23 (-5 to +56), A/A/B trifecta +15 (-7 to +37); First Four -4, multi-race pools no gain (doubles / treble / quaddies
+    have 5-6 real dividends each: too few to calibrate). Absolute: trifecta A/A/B +13% flexi, box A +12%, exacta / quinella
+    box A +2 / +4% (one-day calibration). Re-test on real dividends after ~3 weeks of capture.
+    Caps (flexi, est.): trifecta A/A/B 36, box A 24, exacta 12, quinella 6, quaddie 400; first starter in the race / any
+    leg hurts trifecta (-18% vs +23%) and quaddie (-58% vs +65%). Early quaddie legs = the 4 races before the main
+    (races 1-4 at 7 races or fewer; user correction, `exotics_test.multi_legs`): 61 of 201 qualify, est. +119% (-15 to
+    +285) vs -40% for SP picks. Dashboard race pages show these live (TopRate `lib/betRules.ts`, PRs #267 / #268).
   - NSW / WA (`RACING_EXTRA_STATES=NSW,WA`, `blend_eval_nswwa.md`; control = VIC/SA/QLD-only rerun on the same DB,
     `blend_eval_ctl.md`, identical to `mu` on shared races; paired `blend_eval_nswwa_vs_ctl.md`, 37,821 races):
     - NSW/WA in training helps VIC/SA/QLD: prodmu model alone -0.0011 (95% -0.0018 to -0.0004; QLD -0.0021,
@@ -214,6 +232,55 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     blend -0.0001 (significant, tiny); heavy 9-10 (1,248 races) model alone -0.0033 (-0.0079 to +0.0015), blend
     -0.0006 (-0.0013 to 0.0000); soft 7-8 blend -0.0004 n.s.; sire inputs carry part of it. Production edge vs SP by
     going: good/soft 1-6 -0.0017 (significant), soft 7-8 +0.0002, heavy +0.0025 (n.s.): no edge on wet tracks.
+  - Model-improvement round (3 Oct 2026, user "test all"):
+    - Betting on the model's own probabilities (`tools/model_bet_test.py`, `model_bet_test.md`, 67,391 races 2023 to Sep
+      2026, clear_test OOS scores): win overlays at SP (blend x SP > 1 + m) no edge (-4%, -13 to +4 at m 0); first run
+      showed a fake +56% from ~1,000 races whose SPs sum below 100% (now dropped: overround kept 1.08-1.6). At the
+      dashboard's stale fixed prices +12% but the same bets lose 28% at SP (stale prices, not edge). Exotics by blend
+      order chances vs the same number of SP-picked combos: level at low margins; at margin 0.1 trifecta hits 1.91x
+      SP-implied vs 1.58x, exacta 1.84x vs 1.48x (estimated dividends too generous: SP picks also show profit). Lead only.
+    - Price movement (`tools/price_drift_test.py`, `price_drift_test.md`, 656 races 18 Sep to 3 Oct, TopRate TAB
+      snapshots, bet price median 160 min before): drift adds -0.0016 (n.s.); model on top of that price +0.0052 (n.s.).
+      Needs the Vultr TAB log: `tab_price_archive.yml` is skipped every night (VULTR_RUNNER not set for this repo).
+    - Gear / wpr_nett rerun to 2 Oct (`gear_wpr_test_oct.md`): wpr_nett model alone -0.0074 (-0.0106 to -0.0043, every
+      state), blend +0.0001 n.s. (same as before). Gear (1 Sep to 2 Oct, 1,430 races) +0.0147 worse, unstable signs.
+    - WPR revisions (`tools/wpr_revision_test.py`, `wpr_revision_test.md`, 35,334 runners Apr to Oct 2026): 93% of
+      last-start WPRs differ from the race-morning value (mean |change| 1.8, 19% > 3), old runs too (TopRate re-rates
+      history). No flattering: revised-up horses ran A/E 0.88 next start. Train / serve mismatch; keep dated copies.
+    - Bad SPs: 436 VIC/SA/QLD races since 2023 have SPs summing below 100% (impossible); QLD has 1,533 races over 160%
+      (thin country markets, likely real). Exclude the first group from training and evaluation.
+    - Bad-SP filter (`blend_eval.py --variants lv --logit-only --sp-check --tag spcheck`, 38,077 clean races of 38,310):
+      blend / SP calibration fitted without races whose SPs sum below 100%: lv blend -0.00002 (-0.00004 to -0.00001),
+      weights barely move (a 0.117-0.184 vs 0.122-0.185). ADOPTED in `production.train` (consistency; tiny gain).
+    - wpr_nett top layer ADOPTED (`model/wpr_nett_layer.py`, applied in `race_card.score` -> race cards / dashboard;
+      `model % (base)` keeps production's own chance; RACING_WPR_NETT=0 switches it off). Weights 0.834 log p_model,
+      0.049 per wpr_nett point vs field, 0.128 missing (mean of the half-window fits). Smoke test 26 Sep to 2 Oct
+      (334 races, weights partly in-sample): model log loss 1.7984 -> 1.7863. Refit with gear_wpr_test.py as data grows.
+    - Combo strike rate (`tools/combo_strike_test.py`, `combo_strike_test.md`, 1,753 races 22 Aug to 3 Oct, pre-race):
+      top pick wins Combo 30.7%, projection only 26.6%, RM only 29.1%, TopRate rating only 33.3%, SP fav 34.4%. Rating
+      share 0.7: 33.0% (both halves), ROI -14% -> -11%, top pick = SP fav 59% -> 69%; non-fav top picks A/E pm 1.10 -> 1.18
+      (projection-only disagreements are the weak ones, -23%). ADOPTED in TopRate (PR #284): Combo 0.3 proj + 0.7 rating,
+      lines 4 / 8 -> 5 / 10 (same coverage: 2.51 runners / 61% of winners inside 5, 4.57 / 82% inside 10; exotic hit A/E
+      unchanged); bet_log.py matches. Value stays the Racing Model's job.
+    - Model cleanup (4 Oct 2026):
+      - Leave-one-group-out (`model/group_ablation.py`, `group_ablation.md`, 38,310 races): ability +0.0417 alone / +0.0008
+        blend (QLD +0.0019); age / sex / weight +0.0079 / +0.0004; form shape +0.0031 / 0; jockey / trainer +0.0017 / 0;
+        race-day projection +0.0009 / +0.0002 (QLD +0.0005); prep +0.0007; track bias +0.0004; distance / going +0.0002;
+        comments +0.0002 n.s.; past ground loss 0.0000. Comments + ground loss dropped together
+        (`group_ablation_joint.md`): +0.0003 alone n.s., blend QLD +0.0002 (0.0000 to +0.0004). Nothing removed.
+      - TopRate projection components (`tools/wprp_component_test.py`, `wprp_component_test.md`, 1,530 races 25 Aug to
+        2 Oct, 08:00 values): adjustments help alone (+0.021) but projection + SP is worse than base + SP (-0.0020).
+        Without own_going / own_trend / own_distance: -0.0060 alone, -0.0003 with SP. ADOPTED in TopRate PR #285
+        (`TOPRATE_PARTS_OUT`; bet_log.py matches).
+      - Speed map checks (`tools/speedmap_check.py`, `speedmap_check.md`, 33,432 races): projected leaders over-credited
+        0.6 WPR (barrier 1-4) to 1.4 (10+); leader slope actual vs model: good -1.06 vs -2.84, soft 5-6 -0.20, soft
+        7-8 -0.09, heavy +0.60 (back-markers favoured) vs -2.4 every going. In the walk-forward logit
+        (`blend_eval.py --variants wet wet-sx-wet wet-sx-track wet-sx-both --logit-only --tag sx`, 38,310 races):
+        sx_wet (settle vs race x going above 4) model alone -0.0001 (-0.0003 to -0.0000), blend -0.00002 (significant),
+        every fold, 2026 -0.0004: ADOPTED (`offset_model._add_wet`, production COLS). Track leader correction (prior
+        years, shrunk 150 races) +0.0009 alone (worse), blend QLD -0.0002 / VIC/SA +0.0002: not adopted.
+    - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
+      try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).

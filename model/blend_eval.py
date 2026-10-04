@@ -66,6 +66,35 @@ from model import wet_form  # noqa: E402
 SHAPE["wet"], SHAPE["wet-sire"] = wet_form.FEATS, wet_form.NO_SIRE
 EXTRA["wet"] = EXTRA["lv"] + wet_form.FEATS
 EXTRA["wet-sire"] = EXTRA["lv"] + wet_form.NO_SIRE
+# speed map corrections (tools/speedmap_check.py): settle x wetness, and a track leader correction (per track, actual
+# within-race slope of WPR - prior WPR on projected settle minus the model's adj slope, from races before the test
+# year only, shrunk by races / (races + 150)), times settle vs the race mean. On top of production (wet).
+SX = {"wet-sx-wet": ["sx_wet"], "wet-sx-track": ["sx_track"], "wet-sx-both": ["sx_wet", "sx_track"]}
+for _v, _c in SX.items():
+    SHAPE[_v] = _c
+    EXTRA[_v] = EXTRA["wet"] + _c
+
+
+def add_speed_fix(con, e, y):
+    """sx_wet and sx_track on e for test year y (track correction from rows before y only)."""
+    info = con.sql("""select r.run_id, ra.track, ra.going_num, r.res_wpr from runs r join races ra using (race_id)
+                      where r.race_date >= date '2019-01-01'""").df()
+    x = e[["run_id", "race_id", "race_date", "proj_settle", "proj_adj", "bias_adj", "h_wpr", "h_none"]].merge(
+        info, on="run_id", how="left")
+    g = x.groupby("race_id")
+    sd = x["proj_settle"] - g["proj_settle"].transform("mean")
+    adj = x["proj_adj"].fillna(0) + x["bias_adj"].fillna(0)
+    adj_d = adj - adj.groupby(x["race_id"]).transform("mean")
+    perf = (x["res_wpr"] - x["h_wpr"]).where(x["h_none"] == 0)
+    perf_d = perf - perf.groupby(x["race_id"]).transform("mean")
+    prior = (x["race_date"] < f"{y}-01-01") & perf_d.notna() & sd.notna()
+    t = pd.DataFrame({"track": x["track"], "race_id": x["race_id"], "a": sd * perf_d, "m": sd * adj_d, "ss": sd * sd})[prior]
+    st = t.groupby("track").agg(a=("a", "sum"), m=("m", "sum"), ss=("ss", "sum"), races=("race_id", "nunique"))
+    st["corr"] = (st["a"] - st["m"]) / st["ss"].clip(lower=1e-9) * st["races"] / (st["races"] + 150.0)
+    e = e.copy()
+    e["sx_wet"] = (sd * (x["going_num"].fillna(4) - 4).clip(lower=0)).fillna(0).to_numpy()
+    e["sx_track"] = (sd * x["track"].map(st["corr"]).astype(float).fillna(0)).fillna(0).to_numpy()
+    return e
 MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
 
 
@@ -98,6 +127,7 @@ def feats_for(v, cols):
 BOOT = 2000
 RATING = False          # set by --rating
 LOGIT_ONLY = False      # set by --logit-only (skip the GBM fits)
+SP_CHECK = False        # set by --sp-check (also fit blend / SP calibration without impossible-SP races)
 RATING_TABLES = {}
 KEY = ["race_id", "race_date", "state", "fold"]
 
@@ -126,9 +156,19 @@ def run_fold(e, y, variants):
     assert tr.race_date.max() < te.race_date.min(), "train must end before the test period"
     cut = tr["race_date"].quantile(0.75)
     inner, bl = _race(tr[tr.race_date <= cut].copy()), _race(tr[tr.race_date > cut].copy())
+    if SP_CHECK:
+        # races whose SPs sum below 100% (impossible market: bad SP data); blend / calibration refitted without them
+        ovr = lambda df: (1 / df["sp"]).groupby(df["race_id"]).transform("sum")  # noqa: E731
+        bl_ok = _race(bl[ovr(bl) >= 1.0].copy())
+        te_ok = ovr(te) >= 1.0
     out = {"SP raw": race_ll(te["p_sp"].to_numpy(), te)}
     c = clogit.fit(bl[["log_p_sp"]].to_numpy(float), bl["race"].to_numpy(), bl["won"].to_numpy())[0]
     out["SP calibrated"] = race_ll(om._softmax(c * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
+    if SP_CHECK:
+        c2 = clogit.fit(bl_ok[["log_p_sp"]].to_numpy(float), bl_ok["race"].to_numpy(), bl_ok["won"].to_numpy())[0]
+        out["SP calibrated (SP-checked fit)"] = race_ll(om._softmax(c2 * te["log_p_sp"].to_numpy(),
+                                                                    te["race"].to_numpy()), te)
+        out["sp_ok"] = te.loc[te.won == 1, "race_id"].map(te_ok.groupby(te["race_id"]).first()).astype(float).to_numpy()
     weights = {"SP calibration c": c, "blend window": f"{bl.race_date.min():%d %b %Y} to {bl.race_date.max():%d %b %Y}"}
     # per-state weights (QLD, VIC/SA, and NSW / WA when in scope), same blend window
     grp_bl, grp_te = state_group(bl["state"]), state_group(te["state"])
@@ -165,6 +205,13 @@ def run_fold(e, y, variants):
             out[f"{v}: blend {name}"] = race_ll(
                 om._softmax(a * np.log(p_te) + b * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
             weights[f"{v} {name} a"], weights[f"{v} {name} b"] = a, b
+            if SP_CHECK:
+                ok = (ovr(bl) >= 1.0).to_numpy()
+                a2, b2 = clogit.fit(np.c_[np.log(p_bl[ok]), bl_ok["log_p_sp"].to_numpy(float)], bl_ok["race"].to_numpy(),
+                                    bl_ok["won"].to_numpy())
+                out[f"{v}: blend {name} (SP-checked fit)"] = race_ll(
+                    om._softmax(a2 * np.log(p_te) + b2 * te["log_p_sp"].to_numpy(), te["race"].to_numpy()), te)
+                weights[f"{v} {name} a, SP-checked"], weights[f"{v} {name} b, SP-checked"] = a2, b2
             ab = {}
             for g_ in groups:
                 m_ = grp_bl == g_
@@ -217,16 +264,19 @@ def main():
     ap.add_argument("--tag", default=None, help="suffix for the report and per-race file (default: variants)")
     ap.add_argument("--rating", action="store_true", help="add the explicit rating model (rating.py) to the baseline")
     ap.add_argument("--logit-only", action="store_true", help="skip the GBM fits (faster)")
+    ap.add_argument("--sp-check", action="store_true",
+                    help="also fit the blend and SP calibration without races whose SPs sum below 100%%")
     ap.add_argument("--report-only", action="store_true",
                     help="rebuild the report from the saved per-race file and weights (no refits)")
     args = ap.parse_args()
     global RATING
     RATING = args.rating
-    global LOGIT_ONLY
+    global LOGIT_ONLY, SP_CHECK
     LOGIT_ONLY = args.logit_only
+    SP_CHECK = args.sp_check
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
-    om.LEADER_VALUE = any(v in variants for v in ("lv", "wet", "wet-sire"))
+    om.LEADER_VALUE = any(v in ("lv", "wet", "wet-sire") or v.startswith("wet-sx") for v in variants)
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
     per_race_file, wts_file = ROOT / f"reports/blend_per_race{suffix}.csv.gz", ROOT / f"reports/blend_weights{suffix}.csv"
@@ -243,6 +293,8 @@ def main():
                     wf = wet_form.features(con)
                 if not all(c in e for c in wet_form.FEATS):
                     e = e.merge(wf, on="run_id", how="left").fillna({c: 0.0 for c in wet_form.FEATS})
+            if any(v in SX for v in variants):
+                e = add_speed_fix(con, e, y)
             r, w = run_fold(e, y, variants)
             per_race.append(r)
             wts[y] = w
