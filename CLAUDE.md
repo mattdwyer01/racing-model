@@ -317,6 +317,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       -0.0007 n.s. (QLD -0.0019), Proj value (prior WPR / adj / bias, no RM) -0.0007 n.s. Betting value >= 1.0 at SP:
       Proj value 1,892 bets +2.4% (-7 to +12; 2024 -3, 2025 +13, 2026 +9), within 4 no FS 1,073 +3.8%; RM value -3.4%
       (2026 -20%). Cuts above 1.05 too thin / unstable. First fully out-of-sample rule near or above break-even at SP.
+      LIVE (4 Oct): `model/value_live.py` (facts / design / score) + `model/value_params.json` (`value_model.py --fit-live`;
+      walk-forward through the live code: value >= 1.0, SP <= $21 +5.7% over 1,916 bets, -4 to +16, every year positive;
+      apprentice = jockey claimed in the last 120 days since live runners carry no claim). `race_card.add_value` exports
+      per-runner `vu` / `vs` to racing_model.json (p = softmax(vs x log p_price + vu)); TopRate `bet_log.py` logs value >= 1.0
+      at the fixed price 12 min out, VIC/SA/QLD, not bush, $10 notional, to `value_log.csv` (logged only). Fires on ~0.8% of
+      runners (~13 a week). Refit params yearly.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in

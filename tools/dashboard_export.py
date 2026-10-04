@@ -86,6 +86,8 @@ def _sql_dates(ds):
 
 
 def _clean(v):
+    if v is pd.NA or v is pd.NaT:
+        return None
     if isinstance(v, (float, np.floating)):
         return None if not np.isfinite(v) else round(float(v), 4)
     if isinstance(v, (np.integer,)):
