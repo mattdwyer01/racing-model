@@ -295,6 +295,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       Dated WPR archive started (`pull_toprate.archive_wpr`, store `wpr_dated.csv.gz`, `wpr_asof`).
       ADOPTED (user, 4 Oct): Combo = 0.30 proj + 0.15 RM (6.843 x ln p, vs field) + 0.10 rating + 0.10 form + 0.35 Nett
       (0.45 proj when no RM figure), lines 4 / 8 (TopRate PR #291, bet_log.py matches).
+    - Win rule check over 3 years (`tools/topsm_test.py`, `topsm_test.md`, 36,824 VIC/SA/QLD races 2023 to Sep 2026, walk-forward RM top
+      pick + v3 race-day adj vs field, SP): top pick + SM >= 1 + $3-6 (the 6-week dashboard lead, +4%) is -12.4% (-18 to -6; 2023 -2%,
+      2024 -3%, 2025 -27%, 2026 -16%). Price floors / caps do not help. Best: top pick 4+ clear + SM favoured, -6% (-11 to -1), with $2+
+      -4.5% (-12 to +2); A/E pm 1.10-1.14 but below the SP take. Every year 2025-26 worse than 2023-24.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
