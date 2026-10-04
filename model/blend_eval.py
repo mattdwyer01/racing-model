@@ -66,6 +66,35 @@ from model import wet_form  # noqa: E402
 SHAPE["wet"], SHAPE["wet-sire"] = wet_form.FEATS, wet_form.NO_SIRE
 EXTRA["wet"] = EXTRA["lv"] + wet_form.FEATS
 EXTRA["wet-sire"] = EXTRA["lv"] + wet_form.NO_SIRE
+# speed map corrections (tools/speedmap_check.py): settle x wetness, and a track leader correction (per track, actual
+# within-race slope of WPR - prior WPR on projected settle minus the model's adj slope, from races before the test
+# year only, shrunk by races / (races + 150)), times settle vs the race mean. On top of production (wet).
+SX = {"wet-sx-wet": ["sx_wet"], "wet-sx-track": ["sx_track"], "wet-sx-both": ["sx_wet", "sx_track"]}
+for _v, _c in SX.items():
+    SHAPE[_v] = _c
+    EXTRA[_v] = EXTRA["wet"] + _c
+
+
+def add_speed_fix(con, e, y):
+    """sx_wet and sx_track on e for test year y (track correction from rows before y only)."""
+    info = con.sql("""select r.run_id, ra.track, ra.going_num, r.res_wpr from runs r join races ra using (race_id)
+                      where r.race_date >= date '2019-01-01'""").df()
+    x = e[["run_id", "race_id", "race_date", "proj_settle", "proj_adj", "bias_adj", "h_wpr", "h_none"]].merge(
+        info, on="run_id", how="left")
+    g = x.groupby("race_id")
+    sd = x["proj_settle"] - g["proj_settle"].transform("mean")
+    adj = x["proj_adj"].fillna(0) + x["bias_adj"].fillna(0)
+    adj_d = adj - adj.groupby(x["race_id"]).transform("mean")
+    perf = (x["res_wpr"] - x["h_wpr"]).where(x["h_none"] == 0)
+    perf_d = perf - perf.groupby(x["race_id"]).transform("mean")
+    prior = (x["race_date"] < f"{y}-01-01") & perf_d.notna() & sd.notna()
+    t = pd.DataFrame({"track": x["track"], "race_id": x["race_id"], "a": sd * perf_d, "m": sd * adj_d, "ss": sd * sd})[prior]
+    st = t.groupby("track").agg(a=("a", "sum"), m=("m", "sum"), ss=("ss", "sum"), races=("race_id", "nunique"))
+    st["corr"] = (st["a"] - st["m"]) / st["ss"].clip(lower=1e-9) * st["races"] / (st["races"] + 150.0)
+    e = e.copy()
+    e["sx_wet"] = (sd * (x["going_num"].fillna(4) - 4).clip(lower=0)).fillna(0).to_numpy()
+    e["sx_track"] = (sd * x["track"].map(st["corr"]).astype(float).fillna(0)).fillna(0).to_numpy()
+    return e
 MU = ["r_mu", "r_sigma"]   # prodmu: rating model (rating.py) expected WPR vs the field and its uncertainty, as logit inputs
 
 
@@ -247,7 +276,7 @@ def main():
     SP_CHECK = args.sp_check
     variants = ["baseline"] + args.variants
     om.EXTRA_PROJ = any(v in PARTS for v in variants)
-    om.LEADER_VALUE = any(v in variants for v in ("lv", "wet", "wet-sire"))
+    om.LEADER_VALUE = any(v in ("lv", "wet", "wet-sire") or v.startswith("wet-sx") for v in variants)
     tag = args.tag or "_".join(variants[1:])
     suffix = f"_{tag}" if tag else ""
     per_race_file, wts_file = ROOT / f"reports/blend_per_race{suffix}.csv.gz", ROOT / f"reports/blend_weights{suffix}.csv"
@@ -264,6 +293,8 @@ def main():
                     wf = wet_form.features(con)
                 if not all(c in e for c in wet_form.FEATS):
                     e = e.merge(wf, on="run_id", how="left").fillna({c: 0.0 for c in wet_form.FEATS})
+            if any(v in SX for v in variants):
+                e = add_speed_fix(con, e, y)
             r, w = run_fold(e, y, variants)
             per_race.append(r)
             wts[y] = w
