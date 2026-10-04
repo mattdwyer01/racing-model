@@ -134,7 +134,9 @@ def add_value(con, c, rows, raw, train_end):
         adj = tr["proj_adj"].fillna(0) + tr["bias_adj"].fillna(0)
         thr["sm"] = float((adj - adj.groupby(tr["race_id"]).transform("mean")).quantile(0.82))
         thr["bias"] = float(tr["bias_adj"].quantile(0.8))
-    v = value_live.score(value_live.design(x, thr), params)
+    xd = value_live.design(x, thr)
+    v = value_live.score(xd, params)
+    v["signals"] = value_live.signals(xd, params).to_numpy()
     return c.merge(v, on="run_id", how="left")
 
 

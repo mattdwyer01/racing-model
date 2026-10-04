@@ -148,3 +148,17 @@ def score(x, params):
     vu = sum(beta[c] * x[c] for c in COLS if c in beta and c not in SLOPE)
     vs = beta["lsp"] + sum(beta[c] * x[cond] for c, cond in SLOPE.items() if cond)
     return pd.DataFrame({"run_id": x["run_id"], "vu": vu, "vs": vs})
+
+
+# Signals shown on the dashboard (green / red dots): the flags whose fitted effect is at least 1.5% on the win chance
+# (|beta| >= 0.015 in value_params.json); signs and sizes come from the fit, so they match what drives the value log.
+SIGNAL_MIN = 0.015
+
+
+def signals(x, params):
+    """Per runner: '|'-joined codes of the active signal flags (f_* and n_* inputs with |beta| >= SIGNAL_MIN)."""
+    beta = params["beta"]
+    keep = [c for c in COLS if c.startswith(("f_", "n_")) and abs(beta.get(c, 0)) >= SIGNAL_MIN and c != "f_bias"]
+    on = x[keep].to_numpy() > 0
+    codes = np.array(keep)
+    return pd.Series(["|".join(codes[row]) for row in on], index=x.index)
