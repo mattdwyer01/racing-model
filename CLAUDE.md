@@ -262,6 +262,23 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       (projection-only disagreements are the weak ones, -23%). ADOPTED in TopRate (PR #284): Combo 0.3 proj + 0.7 rating,
       lines 4 / 8 -> 5 / 10 (same coverage: 2.51 runners / 61% of winners inside 5, 4.57 / 82% inside 10; exotic hit A/E
       unchanged); bet_log.py matches. Value stays the Racing Model's job.
+    - Model cleanup (4 Oct 2026):
+      - Leave-one-group-out (`model/group_ablation.py`, `group_ablation.md`, 38,310 races): ability +0.0417 alone / +0.0008
+        blend (QLD +0.0019); age / sex / weight +0.0079 / +0.0004; form shape +0.0031 / 0; jockey / trainer +0.0017 / 0;
+        race-day projection +0.0009 / +0.0002 (QLD +0.0005); prep +0.0007; track bias +0.0004; distance / going +0.0002;
+        comments +0.0002 n.s.; past ground loss 0.0000. Comments + ground loss dropped together
+        (`group_ablation_joint.md`): +0.0003 alone n.s., blend QLD +0.0002 (0.0000 to +0.0004). Nothing removed.
+      - TopRate projection components (`tools/wprp_component_test.py`, `wprp_component_test.md`, 1,530 races 25 Aug to
+        2 Oct, 08:00 values): adjustments help alone (+0.021) but projection + SP is worse than base + SP (-0.0020).
+        Without own_going / own_trend / own_distance: -0.0060 alone, -0.0003 with SP. ADOPTED in TopRate PR #285
+        (`TOPRATE_PARTS_OUT`; bet_log.py matches).
+      - Speed map checks (`tools/speedmap_check.py`, `speedmap_check.md`, 33,432 races): projected leaders over-credited
+        0.6 WPR (barrier 1-4) to 1.4 (10+); leader slope actual vs model: good -1.06 vs -2.84, soft 5-6 -0.20, soft
+        7-8 -0.09, heavy +0.60 (back-markers favoured) vs -2.4 every going. In the walk-forward logit
+        (`blend_eval.py --variants wet wet-sx-wet wet-sx-track wet-sx-both --logit-only --tag sx`, 38,310 races):
+        sx_wet (settle vs race x going above 4) model alone -0.0001 (-0.0003 to -0.0000), blend -0.00002 (significant),
+        every fold, 2026 -0.0004: ADOPTED (`offset_model._add_wet`, production COLS). Track leader correction (prior
+        years, shrunk 150 races) +0.0009 alone (worse), blend QLD -0.0002 / VIC/SA +0.0002: not adopted.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in

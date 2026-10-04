@@ -156,6 +156,13 @@ def _add_wet(con, e):
     from model import wet_form
     e = e.merge(wet_form.features(con), on="run_id", how="left")
     e[wet_form.FEATS] = e[wet_form.FEATS].fillna(0.0)
+    # settle x wetness (Oct 2026, blend_eval_sx.md: model alone -0.0001 significant, blend -0.00002, better every fold):
+    # projected settle vs the race mean x going above good 4 (leaders' edge fades on soft, reverses on heavy)
+    if "proj_settle" in e:
+        go = con.sql("select race_id, going_num from races").df().drop_duplicates("race_id")
+        g = e["race_id"].map(go.set_index("race_id")["going_num"]).astype(float).fillna(4.0)
+        sd = e["proj_settle"] - e.groupby("race_id")["proj_settle"].transform("mean")
+        e["sx_wet"] = (sd * (g - 4).clip(lower=0)).fillna(0.0).to_numpy()
     return e
 
 
