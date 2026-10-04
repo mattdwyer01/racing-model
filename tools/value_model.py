@@ -197,14 +197,6 @@ def fit_live():
     print("\n".join(L))
 
 
-if __name__ == "__main__":
-    if "--fit-live" in sys.argv:
-        fit_live()
-    elif "--five-states" in sys.argv:
-        five_states()
-    else:
-        main()
-
 
 def five_states():
     """Value model walk-forward on VIC/SA/QLD + NSW/WA (tools/pace_leader_extra.py), through model/value_live.py.
@@ -261,3 +253,12 @@ def five_states():
     with OUT.open("a") as fh:
         fh.write("\n" + "\n".join(L) + "\n")
     print("\n".join(L))
+
+
+if __name__ == "__main__":
+    if "--fit-live" in sys.argv:
+        fit_live()
+    elif "--five-states" in sys.argv:
+        five_states()
+    else:
+        main()
