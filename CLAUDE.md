@@ -293,6 +293,36 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       adjustments add nothing on top of RM (+0.0004). Speed map barrier / going cell corrections worse (+0.005 alone).
       Base: fitted mix (dt180, ewm3, max5, ln runs) beats ewm7 alone (-0.029, top pick 26.3 vs 25.3%) but not inside Combo.
       Dated WPR archive started (`pull_toprate.archive_wpr`, store `wpr_dated.csv.gz`, `wpr_asof`).
+      ADOPTED (user, 4 Oct): Combo = 0.30 proj + 0.15 RM (6.843 x ln p, vs field) + 0.10 rating + 0.10 form + 0.35 Nett
+      (0.45 proj when no RM figure), lines 4 / 8 (TopRate PR #291, bet_log.py matches).
+    - Win rule check over 3 years (`tools/topsm_test.py`, `topsm_test.md`, 36,824 VIC/SA/QLD races 2023 to Sep 2026, walk-forward RM top
+      pick + v3 race-day adj vs field, SP): top pick + SM >= 1 + $3-6 (the 6-week dashboard lead, +4%) is -12.4% (-18 to -6; 2023 -2%,
+      2024 -3%, 2025 -27%, 2026 -16%). Price floors / caps do not help. Best: top pick 4+ clear + SM favoured, -6% (-11 to -1), with $2+
+      -4.5% (-12 to +2); A/E pm 1.10-1.14 but below the SP take. Every year 2025-26 worse than 2023-24.
+    - Strategy search (`tools/strategy_search.py`, `strategy_search.md`, 35,722 races, 9,282 rules chosen on 2023-24, scored on
+      2025-Sep 2026, SP): top-decile train rules (+9%) score -12.7% on test, the same as every other decile: no carry-over.
+      One credible lead (smooth in its neighbours, QLD only): model top pick 4+ clear, race-day adj >= 1 (top 7%), SP $2-3:
+      468 bets +11.7% (+1 to +22), every year +11 to +13; 5+ clear +18%, 6+ +21%. Not out of sample: paper-trade it.
+    - Filter screen (`tools/filter_screen.py`, `filter_screen.md`, 35 filters, A/E in 2023-24 and 2025-26): consistent small market
+      misses (A/E 1.03-1.07 in both): barrier 10+, distance down 200m+, field 13+, back within 14 days, track bias helps, age 6+,
+      weak jockey, speed map favoured. Under-priced the other way: apprentices, top jockeys, barrier 1-3, projected leaders.
+      Stacked (count of flags, pool within 4 / $2+ / no FS): 5+ flags A/E 1.19 / 1.24, -1.9% (937 bets); speed map + 4 others
+      +0.5% (781); top pick + 4 flags -0.8%. Near break-even at SP, ~1 bet a day.
+      Batch 2 (`tools/filter_screen2.py`, `filter_screen2.md`): last-start excuses beat the market in both periods (raced wide /
+      top-20% GPS extra ground A/E 1.05-1.12, held up 1.04-1.05, laid / hung 1.03-1.08, overraced, vet issue); 'every chance'
+      video comment is over-bet (0.93-0.97). Closing L600, WPR trend, sire wet / staying index: no consistent edge. Top pick,
+      $2+, 9-flag score 5+: 713 bets +2.8% (-13 to +19), positive in both periods; nothing clears break-even convincingly at SP.
+    - Value models (`tools/value_model.py`, `value_model.md`): conditional logit with log SP + flags (17 positive, 4 negative) +
+      log SP x race conditions, walk-forward by year (test 2024 to Sep 2026, 26,092 races). Log loss vs calibrated SP: RM value
+      -0.0007 n.s. (QLD -0.0019), Proj value (prior WPR / adj / bias, no RM) -0.0007 n.s. Betting value >= 1.0 at SP:
+      Proj value 1,892 bets +2.4% (-7 to +12; 2024 -3, 2025 +13, 2026 +9), within 4 no FS 1,073 +3.8%; RM value -3.4%
+      (2026 -20%). Cuts above 1.05 too thin / unstable. First fully out-of-sample rule near or above break-even at SP.
+      LIVE (4 Oct): `model/value_live.py` (facts / design / score) + `model/value_params.json` (`value_model.py --fit-live`;
+      walk-forward through the live code: value >= 1.0, SP <= $21 +5.7% over 1,916 bets, -4 to +16, every year positive;
+      apprentice = jockey claimed in the last 120 days since live runners carry no claim). `race_card.add_value` exports
+      per-runner `vu` / `vs` to racing_model.json (p = softmax(vs x log p_price + vu)); TopRate `bet_log.py` logs value >= 1.0
+      at the fixed price 12 min out, VIC/SA/QLD, not bush, $10 notional, to `value_log.csv` (logged only). Fires on ~0.8% of
+      runners (~13 a week). Refit params yearly.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in

@@ -25,7 +25,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from model import figure, production, race_sim, wpr_nett_layer  # noqa: E402
+from model import figure, production, race_sim, value_live, wpr_nett_layer  # noqa: E402
 from model import offset_model as om  # noqa: E402
 from model.validate_figure import eval_set  # noqa: E402
 
@@ -114,6 +114,30 @@ def wpr_nett_on_top(c, pr, m):
     return c
 
 
+def add_value(con, c, rows, raw, train_end):
+    """Per-runner value utility `vu` and price slope `vs` (model/value_live.py): p = softmax(vs x log p_price + vu).
+    The race-day projection thresholds are re-set from this build's own training rows (same quantiles as the fit),
+    so a change of projection scale cannot shift the flags."""
+    params = value_live.load()
+    if params is None or c.empty:
+        return c
+    x = rows[["run_id", "race_id", "race_date", "proj_adj", "bias_adj", "h_wpr", "h_none", "dist"]].copy()
+    f = value_live.facts(con, str(pd.Timestamp(x["race_date"].min()).date()))
+    key = x["run_id"]
+    x["run_id"] = x["run_id"].astype(str)
+    x = x.merge(f, on="run_id", how="left")
+    x["run_id"] = key.to_numpy()
+    thr = dict(params["thresholds"])
+    tr = raw[raw["core_scope"] & (raw["race_date"] < train_end) &
+             (raw["race_date"] >= pd.Timestamp(train_end) - pd.Timedelta(days=730))]
+    if len(tr) > 10000:
+        adj = tr["proj_adj"].fillna(0) + tr["bias_adj"].fillna(0)
+        thr["sm"] = float((adj - adj.groupby(tr["race_id"]).transform("mean")).quantile(0.82))
+        thr["bias"] = float(tr["bias_adj"].quantile(0.8))
+    v = value_live.score(value_live.design(x, thr), params)
+    return c.merge(v, on="run_id", how="left")
+
+
 def score(con, train_end, dates, track=None):
     """Card rows for every in-scope race on `dates` (all states, production.CARD_ALL_STATES) with the production model trained on races before
     train_end: speed map, projected rating and breakdown, prices. Returns (DataFrame, model)."""
@@ -153,6 +177,10 @@ def score(con, train_end, dates, track=None):
     lvl = c["h_wpr"].where(c["h_none"] == 0).groupby(c["race_id"]).transform("mean")
     c["projected rating"] = lvl + c["rating vs field"]
     c["race-day adj"] = c.get("race-day projection", 0) + c.get("track bias", 0)
+    try:                                 # value model (model/value_live.py); never breaks a card / dashboard build
+        c = add_value(con, c, rows, raw, train_end)
+    except Exception as e:  # noqa: BLE001
+        print(f"value model skipped: {type(e).__name__}: {str(e)[:160]}", flush=True)
     for price, lab in [("SP", "edge vs SP"), ("fixed_win_price", "edge vs fixed")]:
         if "blend %" in c:
             c[lab] = c["blend %"] / 100 * c[price] - 1
