@@ -331,6 +331,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       RM + WPR Nett 29.5% (+0.2, -1.5 to +1.8), RM 29.1%, projection 26.6%, projection v2 (new base + Nett, fitted) 27.8%.
       Winners inside the 4 line at Combo's runner count: Combo 54.9%, RM + Nett 54.4%, projections 49-51%. Projection rework
       cannot match Combo; RM + Nett can.
+      ADOPTED (user, 5 Oct, TopRate PR #295): Combo removed; the column is now "Rating" = RM chance with the WPR Nett layer on
+      the WPR scale (field mean projection + 8.205 x (ln p - mean ln p)); lines 4.5 / 9.5 (same coverage as Combo 4 / 8);
+      bet_log.py win rule / exotics use the same rating.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
