@@ -150,15 +150,17 @@ def score(x, params):
     return pd.DataFrame({"run_id": x["run_id"], "vu": vu, "vs": vs})
 
 
-# Signals shown on the dashboard (green / red dots): the flags whose fitted effect is at least 1.5% on the win chance
-# (|beta| >= 0.015 in value_params.json); signs and sizes come from the fit, so they match what drives the value log.
-SIGNAL_MIN = 0.015
+# Signals shown on the dashboard (green / red count badges): the user's chosen set (5 Oct 2026) from the filter screens
+# (reports/filter_screen*.md): positive = back within 14 days, 4th+ up, speed map favoured, track bias helps, raced
+# wide / held up / laid or hung / vet issue last start; negative = apprentice, 'every chance' last start, staying trip
+# with a weak staying sire. Independent of the value model's weights (the V badge uses the value model).
+SIGNALS = ["f_back14", "f_4thup", "f_sm", "f_bias", "f_wide", "f_heldup", "f_laid", "f_vet",
+           "n_apprentice", "n_every_chance", "n_stay_poor_sire"]
 
 
-def signals(x, params):
-    """Per runner: '|'-joined codes of the active signal flags (f_* and n_* inputs with |beta| >= SIGNAL_MIN)."""
-    beta = params["beta"]
-    keep = [c for c in COLS if c.startswith(("f_", "n_")) and abs(beta.get(c, 0)) >= SIGNAL_MIN and c != "f_bias"]
+def signals(x, params=None):
+    """Per runner: '|'-joined codes of the active signals (SIGNALS)."""
+    keep = [c for c in SIGNALS if c in x]
     on = x[keep].to_numpy() > 0
     codes = np.array(keep)
     return pd.Series(["|".join(codes[row]) for row in on], index=x.index)
