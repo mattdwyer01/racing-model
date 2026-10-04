@@ -308,6 +308,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       weak jockey, speed map favoured. Under-priced the other way: apprentices, top jockeys, barrier 1-3, projected leaders.
       Stacked (count of flags, pool within 4 / $2+ / no FS): 5+ flags A/E 1.19 / 1.24, -1.9% (937 bets); speed map + 4 others
       +0.5% (781); top pick + 4 flags -0.8%. Near break-even at SP, ~1 bet a day.
+      Batch 2 (`tools/filter_screen2.py`, `filter_screen2.md`): last-start excuses beat the market in both periods (raced wide /
+      top-20% GPS extra ground A/E 1.05-1.12, held up 1.04-1.05, laid / hung 1.03-1.08, overraced, vet issue); 'every chance'
+      video comment is over-bet (0.93-0.97). Closing L600, WPR trend, sire wet / staying index: no consistent edge. Top pick,
+      $2+, 9-flag score 5+: 713 bets +2.8% (-13 to +19), positive in both periods; nothing clears break-even convincingly at SP.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
