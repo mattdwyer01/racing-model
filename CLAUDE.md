@@ -319,7 +319,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       (2026 -20%). Cuts above 1.05 too thin / unstable. First fully out-of-sample rule near or above break-even at SP.
       LIVE (4 Oct): `model/value_live.py` (facts / design / score) + `model/value_params.json` (`value_model.py --fit-live`;
       walk-forward through the live code: value >= 1.0, SP <= $21 +5.7% over 1,916 bets, -4 to +16, every year positive;
-      apprentice = jockey claimed in the last 120 days since live runners carry no claim). `race_card.add_value` exports
+      apprentice = jockey claimed in the last 120 days since live runners carry no claim).
+      Apprentice fix (5 Oct): weight_claim_kg (TopRate weight_adjustment) is NEGATIVE for a claim, positive for overweight;
+      every `> 0` test (value_live, value_model, filter_screen) had measured overweight riders (A/E 0.91 / 0.89), not
+      apprentices (1.03 / 1.00; 3kg+ claim 1.08 / 1.03). Now `< 0`; apprentice signal dropped (overweight is not on cards).
+      Refit: n_apprentice +0.018 (was +0.010); value >= 1.0 +3.7% over 1,974 bets (-5 to +13; 2024 +1.4, 2025 +6.0, 2026 +12.2). `race_card.add_value` exports
       per-runner `vu` / `vs` to racing_model.json (p = softmax(vs x log p_price + vu)); TopRate `bet_log.py` logs value >= 1.0
       at the fixed price 12 min out, VIC/SA/QLD, not bush, $10 notional, to `value_log.csv` (logged only). Fires on ~0.8% of
       runners (~13 a week). Refit params yearly.
