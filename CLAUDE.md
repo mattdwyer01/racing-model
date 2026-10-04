@@ -299,6 +299,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       pick + v3 race-day adj vs field, SP): top pick + SM >= 1 + $3-6 (the 6-week dashboard lead, +4%) is -12.4% (-18 to -6; 2023 -2%,
       2024 -3%, 2025 -27%, 2026 -16%). Price floors / caps do not help. Best: top pick 4+ clear + SM favoured, -6% (-11 to -1), with $2+
       -4.5% (-12 to +2); A/E pm 1.10-1.14 but below the SP take. Every year 2025-26 worse than 2023-24.
+    - Strategy search (`tools/strategy_search.py`, `strategy_search.md`, 35,722 races, 9,282 rules chosen on 2023-24, scored on
+      2025-Sep 2026, SP): top-decile train rules (+9%) score -12.7% on test, the same as every other decile: no carry-over.
+      One credible lead (smooth in its neighbours, QLD only): model top pick 4+ clear, race-day adj >= 1 (top 7%), SP $2-3:
+      468 bets +11.7% (+1 to +22), every year +11 to +13; 5+ clear +18%, 6+ +21%. Not out of sample: paper-trade it.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
