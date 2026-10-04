@@ -121,3 +121,25 @@ shifted, overraced, vet issue. Pool within 4 / $2+ / no FS: excuse A/E 1.05 / 1.
 | top pick, 7+ positive, no strict negative |    286 |      0.22 |       1.227 |           6.1 |       1.308 |          20.4 |        13.7 | -9 to +39   |
 | top pick, 7+ positive, no broad negative  |    105 |      0.08 |       0.756 |         -42.6 |       1.179 |           8.1 |       -17   | -50 to +20  |
 | top pick, net 7+                          |    137 |      0.1  |       0.937 |         -16.6 |       1.491 |          36.6 |        12.1 | -22 to +49  |
+
+## More volume for the 8+ rule (weighted score: log A/E per flag fitted on 2023-24 only)
+
+| rule                                                     |   bets |   per week |   A/E 23-24 |   ROI 23-24 % |   A/E 25-26 |   ROI 25-26 % |   ROI all % | 95%        |
+|:---------------------------------------------------------|-------:|-----------:|------------:|--------------:|------------:|--------------:|------------:|:-----------|
+| within 4, $2+, no FS: 8+                                 |    246 |        1.3 |       1.291 |          31.9 |       1.646 |          28.7 |        30.2 | -6 to +68  |
+| within 6, $2+, no FS: 8+                                 |    403 |        2.1 |       1.328 |           5.9 |       1.512 |          11.3 |         8.7 | -18 to +38 |
+| within 8, $2+, no FS: 8+                                 |    556 |        2.9 |       1.431 |           6.7 |       1.517 |          18.3 |        12.7 | -15 to +43 |
+| within 4, any price, no FS: 8+                           |    248 |        1.3 |       1.252 |          30.7 |       1.656 |          29.1 |        29.9 | -3 to +70  |
+| within 4, $2+, FS allowed: 8+                            |    269 |        1.4 |       1.308 |          24.3 |       1.6   |          22.2 |        23.2 | -10 to +60 |
+| any runner, $2+, no FS: 8+                               |   1384 |        7.1 |       1.367 |           0.7 |       1.365 |          -6.3 |        -2.9 | -31 to +32 |
+| within 4, $2+, no FS: 7+, no negative                    |    975 |        5   |       1.089 |         -11.7 |       1.306 |           3.7 |        -3.8 | -18 to +12 |
+| within 6, $2+, no FS: 7+, no negative                    |   1519 |        7.8 |       1.062 |         -22.3 |       1.23  |          -6.6 |       -14.5 | -27 to -2  |
+| within 8, $2+, no FS: 7+, no negative                    |   2170 |       11.2 |       1.099 |         -15.8 |       1.241 |           0.2 |        -8.1 | -21 to +6  |
+| within 4, $2+, no FS: weighted top 1% (cut set on 23-24) |    806 |        4.1 |       1.088 |          -5.6 |       1.197 |          -1.8 |        -3.6 | -20 to +14 |
+| within 4, $2+, no FS: weighted top 2% (cut set on 23-24) |   1573 |        8.1 |       1.062 |         -12.1 |       1.182 |          -5.3 |        -8.6 | -20 to +3  |
+| within 4, $2+, no FS: weighted top 3% (cut set on 23-24) |   2286 |       11.8 |       1.108 |         -10.5 |       1.107 |         -13.1 |       -11.8 | -21 to -2  |
+| within 4, $2+, no FS: weighted top 5% (cut set on 23-24) |   3796 |       19.5 |       1.101 |         -12.3 |       1.086 |         -12.5 |       -12.4 | -19 to -5  |
+| within 6, $2+, no FS: weighted top 1% (cut set on 23-24) |   1143 |        5.9 |       1.142 |          -9.5 |       1.205 |          -6.5 |        -7.9 | -22 to +6  |
+| within 6, $2+, no FS: weighted top 2% (cut set on 23-24) |   2229 |       11.5 |       1.106 |         -12.2 |       1.154 |         -10.4 |       -11.3 | -22 to -1  |
+| within 6, $2+, no FS: weighted top 3% (cut set on 23-24) |   3285 |       16.9 |       1.06  |         -19.1 |       1.105 |         -17.1 |       -18.1 | -26 to -10 |
+| within 6, $2+, no FS: weighted top 5% (cut set on 23-24) |   5495 |       28.3 |       1.082 |         -16.1 |       1.096 |         -15.2 |       -15.7 | -22 to -10 |
