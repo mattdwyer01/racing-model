@@ -84,3 +84,40 @@ shifted, overraced, vet issue. Pool within 4 / $2+ / no FS: excuse A/E 1.05 / 1.
 | top pick $2+, 5+ flags |   3818 |       2.9 |    25.8 |       1.156 |          -1.2 |       1.1   |          -6.2 |        -3.6 | -10 to +2  |
 | top pick $2+, 6+ flags |   1360 |       1   |    26.4 |       1.241 |           2.3 |       1.133 |          -2.5 |        -0.1 | -10 to +10 |
 | top pick $2+, 7+ flags |    373 |       0.3 |    26.8 |       1.136 |          -4.8 |       1.326 |          17.3 |         6.3 | -13 to +26 |
+
+## Excluding negative flags (strict: top jockey, apprentice, 'every chance', 1600+ poor staying sire; broad adds projected leader, barrier 1-3, field <= 8, beaten 6L+ last, track bias hurts, projected back third)
+
+| rule                                      |   bets |   per day |   A/E 23-24 |   ROI 23-24 % |   A/E 25-26 |   ROI 25-26 % |   ROI all % | 95%         |
+|:------------------------------------------|-------:|----------:|------------:|--------------:|------------:|--------------:|------------:|:------------|
+| pool, any strict negative                 |  13464 |     10.18 |       0.977 |         -20.1 |       0.985 |         -18.6 |       -19.5 | -23 to -16  |
+| pool, no strict negative                  |  57651 |     43.61 |       1.048 |         -13   |       1.017 |         -16.1 |       -14.5 | -16 to -13  |
+| pool, any broad negative                  |  52997 |     40.09 |       1.022 |         -15   |       0.994 |         -18   |       -16.4 | -18 to -15  |
+| pool, no broad negative                   |  18118 |     13.7  |       1.064 |         -12.9 |       1.066 |         -12.3 |       -12.6 | -16 to -9   |
+| pool, 5+ positive (as before)             |  11245 |      8.51 |       1.102 |          -9.2 |       1.088 |         -10.7 |        -9.9 | -14 to -6   |
+| pool, 5+ positive, no strict negative     |   9270 |      7.01 |       1.111 |          -7.9 |       1.077 |         -10.9 |        -9.4 | -14 to -5   |
+| pool, 5+ positive, no broad negative      |   3042 |      2.3  |       1.08  |         -13.1 |       1.215 |          -1.6 |        -7.5 | -16 to +1   |
+| pool, net (pos - broad neg) 5+            |   4821 |      3.65 |       1.085 |         -11.1 |       1.197 |          -4   |        -7.6 | -14 to -1   |
+| pool, 6+ positive (as before)             |   4072 |      3.08 |       1.112 |          -9.8 |       1.184 |          -2.7 |        -6.3 | -13 to +1   |
+| pool, 6+ positive, no strict negative     |   3409 |      2.58 |       1.14  |          -6.6 |       1.146 |          -4.7 |        -5.7 | -13 to +2   |
+| pool, 6+ positive, no broad negative      |   1163 |      0.88 |       1.036 |         -17.4 |       1.288 |           7.3 |        -5.3 | -19 to +8   |
+| pool, net (pos - broad neg) 6+            |   1655 |      1.25 |       1.081 |         -12.5 |       1.285 |           3.3 |        -4.7 | -16 to +7   |
+| pool, 7+ positive (as before)             |   1151 |      0.87 |       1.061 |         -13.8 |       1.292 |           1.8 |        -6   | -20 to +9   |
+| pool, 7+ positive, no strict negative     |    975 |      0.74 |       1.089 |         -11.7 |       1.306 |           3.7 |        -3.8 | -18 to +11  |
+| pool, 7+ positive, no broad negative      |    343 |      0.26 |       0.822 |         -29.6 |       1.338 |          13.5 |        -8.2 | -32 to +19  |
+| pool, net (pos - broad neg) 7+            |    431 |      0.33 |       0.969 |          -9.7 |       1.461 |          18.5 |         4.7 | -19 to +31  |
+| pool, 8+ positive (as before)             |    246 |      0.19 |       1.291 |          31.9 |       1.646 |          28.7 |        30.2 | -5 to +69   |
+| pool, 8+ positive, no strict negative     |    210 |      0.16 |       1.38  |          36.7 |       1.558 |          21.4 |        28.7 | -10 to +72  |
+| pool, 8+ positive, no broad negative      |     80 |      0.06 |       1.101 |          14.2 |       1.497 |          43.5 |        27.8 | -39 to +109 |
+| pool, net (pos - broad neg) 8+            |     93 |      0.07 |       1.282 |          24.6 |       1.785 |          71.3 |        47.2 | -17 to +125 |
+| top pick, 5+ positive (as before)         |   3818 |      2.89 |       1.156 |          -1.2 |       1.1   |          -6.2 |        -3.6 | -10 to +2   |
+| top pick, 5+ positive, no strict negative |   2968 |      2.25 |       1.186 |           2.6 |       1.075 |          -6.9 |        -2.1 | -9 to +5    |
+| top pick, 5+ positive, no broad negative  |    956 |      0.72 |       1.123 |           0.9 |       1.11  |         -11.1 |        -4.9 | -17 to +7   |
+| top pick, net 5+                          |   1527 |      1.16 |       1.113 |          -2.8 |       1.142 |          -3.8 |        -3.3 | -13 to +7   |
+| top pick, 6+ positive (as before)         |   1360 |      1.03 |       1.241 |           2.3 |       1.133 |          -2.5 |        -0.1 | -11 to +10  |
+| top pick, 6+ positive, no strict negative |   1073 |      0.81 |       1.289 |           7.9 |       1.077 |          -4.7 |         1.3 | -10 to +13  |
+| top pick, 6+ positive, no broad negative  |    381 |      0.29 |       1.187 |          -1   |       1.105 |         -13.1 |        -7.3 | -25 to +10  |
+| top pick, net 6+                          |    531 |      0.4  |       1.264 |           7.2 |       1.27  |           3.1 |         5   | -12 to +22  |
+| top pick, 7+ positive (as before)         |    373 |      0.28 |       1.136 |          -4.8 |       1.326 |          17.3 |         6.3 | -14 to +27  |
+| top pick, 7+ positive, no strict negative |    286 |      0.22 |       1.227 |           6.1 |       1.308 |          20.4 |        13.7 | -9 to +39   |
+| top pick, 7+ positive, no broad negative  |    105 |      0.08 |       0.756 |         -42.6 |       1.179 |           8.1 |       -17   | -50 to +20  |
+| top pick, net 7+                          |    137 |      0.1  |       0.937 |         -16.6 |       1.491 |          36.6 |        12.1 | -22 to +49  |
