@@ -339,6 +339,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       vs TopRate projection (873 pre-race races) MAE 6.00 vs 6.50, bias -0.3 vs +1.9, top pick level (27.5%). Picking winners:
       top pick 28.0% vs RM 29.3% (2025-26 gap 0.3), log loss 1.9413 fitted / 1.9883 simulated vs RM 1.9227. Spread a bit
       narrow (60% within 1 sd). A better Proj column, not a replacement for the Rating.
+      LIVE (5 Oct): `wpr_model.fit_live` (last 3 years of the production training frame) / `predict` in `race_card.score`
+      (sd x 1.12 to fix the narrow spread); racing_model.json `wp` / `ws`; TopRate Proj column = `wp` (Base + Adj kept equal to
+      Proj, spread in the tooltip; TopRate PR #296). Local build: every upcoming runner filled, corr 0.91 with TopRate's projection,
+      1.7 lower on average.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
