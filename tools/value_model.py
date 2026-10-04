@@ -48,7 +48,7 @@ def build():
         "f_heldup": b("last_cs_held up / checked / hampered"), "f_laid": b("last_cs_laid / hung / shifted"),
         "f_vet": b("last_cs_vet issue (lame, bled, heart)"), "f_l600_worst": d["last_l600_rel"] <= d["last_l600_rel"].quantile(0.2),
         "f_wet_poor_sire": (d["going_num"] >= 7) & (d["sire_wet_idx"] <= 0.8),
-        "n_top_jockey": (d["jockey_sr"] >= 0.18) & (d["jockey_n"] >= 50), "n_apprentice": d["weight_claim_kg"] > 0,
+        "n_top_jockey": (d["jockey_sr"] >= 0.18) & (d["jockey_n"] >= 50), "n_apprentice": d["weight_claim_kg"] < 0,
         "n_every_chance": b("last_cs_video: every chance"), "n_stay_poor_sire": (d["dist"] >= 1600) & (d["sire_stay_idx"] <= 0.8),
     }
     for k, v in F.items():

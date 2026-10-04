@@ -92,12 +92,12 @@ def facts(con, out_from):
     for tag in ("wet", "stay"):
         idx = (r[f"sw_{tag}"] / r[f"sn_{tag}"]) / (r["sw_all"] / r["sn_all"])
         r[f"sire_{tag}_idx"] = idx.where(r[f"sn_{tag}"] >= 50)
-    # jockey 365-day strike rate up to the day before; apprentice = claimed on any ride in the previous 120 days
+    # jockey 365-day strike rate up to the day before; apprentice = claimed (weight_adjustment < 0) on any ride in the previous 120 days
     out = r[r["race_date"] >= pd.Timestamp(out_from)].copy()
     js = _strike(r[r["race_date"] >= pd.Timestamp(out_from) - pd.Timedelta(days=400)], "jockey")
     out = pd.merge_asof(out.sort_values("race_date"), js.sort_values("race_date"), on="race_date", by="jockey",
                         direction="backward")
-    cl = r.loc[r["weight_claim_kg"].fillna(0) > 0, ["jockey", "race_date"]].drop_duplicates().rename(columns={"race_date": "claim_date"})
+    cl = r.loc[r["weight_claim_kg"].fillna(0) < 0, ["jockey", "race_date"]].drop_duplicates().rename(columns={"race_date": "claim_date"})
     cl["race_date"] = cl["claim_date"]
     out = pd.merge_asof(out.sort_values("race_date"), cl.sort_values("race_date"), on="race_date", by="jockey",
                         direction="backward", allow_exact_matches=False)
@@ -159,10 +159,13 @@ def score(x, params):
 
 # Signals shown on the dashboard (green / red count badges): the user's chosen set (5 Oct 2026) from the filter screens
 # (reports/filter_screen*.md): positive = back within 14 days, 4th+ up, speed map favoured, track bias helps, raced
-# wide / held up / laid or hung / vet issue last start; negative = apprentice, 'every chance' last start, staying trip
-# with a weak staying sire. Independent of the value model's weights (the V badge uses the value model).
+# wide / held up / laid or hung / vet issue last start; negative = 'every chance' last start, staying trip with a weak
+# staying sire. Independent of the value model's weights (the V badge uses the value model). The old 'apprentice'
+# signal was dropped (5 Oct): TopRate weight_adjustment is negative for a claim and positive for overweight; the flag
+# had tested > 0 (riders carrying overweight, A/E 0.89-0.91). True apprentices are level with the market (1.00-1.03)
+# and overweight is declared on the day (not on the cards).
 SIGNALS = ["f_back14", "f_4thup", "f_sm", "f_bias", "f_wide", "f_heldup", "f_laid", "f_vet",
-           "n_apprentice", "n_every_chance", "n_stay_poor_sire"]
+           "n_every_chance", "n_stay_poor_sire"]
 
 
 def signals(x, params=None):

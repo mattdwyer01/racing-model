@@ -78,7 +78,7 @@ def main():
         "dropping in class": d["class_level"] < d["last_class_level"], "rising in class": d["class_level"] > d["last_class_level"],
         "metro last start, not metro today": (d["last_location_class"] == "Metro") & (d["location_class"] != "Metro"),
         "jockey change": d["jockey"] != d["last_jockey"],
-        "apprentice claiming": d["weight_claim_kg"] > 0,
+        "apprentice claiming": d["weight_claim_kg"] < 0,
         "weight down 2kg+ vs last": d["weight_kg"] <= d["last_weight_kg"] - 2,
         "weight up 2kg+ vs last": d["weight_kg"] >= d["last_weight_kg"] + 2,
         "distance up 200m+": d["distance"] >= d["last_distance"] + 200, "distance down 200m+": d["distance"] <= d["last_distance"] - 200,
