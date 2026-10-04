@@ -85,3 +85,17 @@ Thresholds: sm 0.525, bias 0.297, gps 2.700, l600 -2.391
 | fit all 5 states | NSW + WA   |    360 |        2.5 |    1.167 |     8.1 | -11 to +30  |   13.8 |   -7.6 |   15.7 |
 | fit all 5 states | all 5      |   1486 |       10.4 |    1.151 |     4.3 | -5 to +14   |    2.2 |   15.2 |   -8.9 |
 
+
+## Live pipeline check (model/value_live.py, apprentice = claimed in the last 120 days)
+
+- Walk-forward log loss vs SP only: -0.0007 (-0.0016 to +0.0003).
+
+| value cut | bets | A/E pm | ROI % | 95% | 2024 | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|
+| 1.0 | 1974 | 1.182 | +3.7 | -5 to +13 | +1.4 | +6.0 | +12.2 |
+| 1.05 | 504 | 1.240 | +13.3 | -7 to +35 | +10.3 | +34.9 | -25.6 |
+
+Final fit (all races): lsp +1.081, wpr_r +0.004, adj_r +0.022, bias_r +0.051, debut +0.249, f_barrier10 +0.050, f_dist_down +0.006, f_dist_up +0.032, f_back14 +0.014, f_4thup +0.044, f_age6 +0.023, f_weak_jockey +0.015, f_sm +0.019, f_bias -0.043, f_wide +0.069, f_gps_ground +0.080, f_heldup +0.003, f_laid +0.021, f_vet +0.102, f_l600_worst +0.010, f_wet_poor_sire -0.001, n_top_jockey -0.018, n_apprentice +0.018, n_every_chance -0.093, n_stay_poor_sire -0.066, lsp_x_field13 +0.024, lsp_x_wet -0.035, lsp_x_qld +0.007, lsp_x_fs_race +0.030, lsp_x_sprint +0.068
+
+Thresholds: sm 0.525, bias 0.297, gps 2.700, l600 -2.391
+
