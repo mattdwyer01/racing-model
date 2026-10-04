@@ -303,6 +303,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       2025-Sep 2026, SP): top-decile train rules (+9%) score -12.7% on test, the same as every other decile: no carry-over.
       One credible lead (smooth in its neighbours, QLD only): model top pick 4+ clear, race-day adj >= 1 (top 7%), SP $2-3:
       468 bets +11.7% (+1 to +22), every year +11 to +13; 5+ clear +18%, 6+ +21%. Not out of sample: paper-trade it.
+    - Filter screen (`tools/filter_screen.py`, `filter_screen.md`, 35 filters, A/E in 2023-24 and 2025-26): consistent small market
+      misses (A/E 1.03-1.07 in both): barrier 10+, distance down 200m+, field 13+, back within 14 days, track bias helps, age 6+,
+      weak jockey, speed map favoured. Under-priced the other way: apprentices, top jockeys, barrier 1-3, projected leaders.
+      Stacked (count of flags, pool within 4 / $2+ / no FS): 5+ flags A/E 1.19 / 1.24, -1.9% (937 bets); speed map + 4 others
+      +0.5% (781); top pick + 4 flags -0.8%. Near break-even at SP, ~1 bet a day.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
