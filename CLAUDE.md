@@ -327,6 +327,10 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       provincial +11.5%, metro -7.4%, so the value log now includes bush meetings, price cap $51 (TopRate PR #293). NSW / WA
       (`tools/pace_leader_extra.py`, `value_model.py --five-states`): VIC/SA/QLD-fitted model on NSW 536 bets +2.5% (-14 to +19),
       WA 122 bets -23%; a five-state fit is less stable (VIC/SA/QLD 2026 -22%). NSW added to the value log (PR #294), WA out.
+    - Replacing Combo (`tools/rating_replace_test.py`, `rating_replace_test.md`, 1,753 pre-race races): top pick Combo 29.3%,
+      RM + WPR Nett 29.5% (+0.2, -1.5 to +1.8), RM 29.1%, projection 26.6%, projection v2 (new base + Nett, fitted) 27.8%.
+      Winners inside the 4 line at Combo's runner count: Combo 54.9%, RM + Nett 54.4%, projections 49-51%. Projection rework
+      cannot match Combo; RM + Nett can.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
