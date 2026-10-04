@@ -288,6 +288,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     - Speed map favoured / unfavoured raised to +/-1 (was 0.5; TopRate PR #290: table colours, tiles, bet_log rules). Within 4,
       SM >= 1 A/E pm 1.10 vs 1.07 at 0.5 (ROI -10% vs -14% at SP); win rule at SM >= 1: 179 bets, 42.5%, +6.9% (-15 to +29) vs
       251, +3.5% at 0.5 (n.s.). Favoured horses within 4 that are not the top pick lose (-22%); over $5 -29%.
+    - Projection tests (`projection_improve.md`): RM in Combo (in place of the projection) top pick level (29.6 vs 29.7%),
+      win rule worse (-6% vs +7%), but +2.2 winners per 100 races inside the 4 line at the same runner count (exotics). Projection
+      adjustments add nothing on top of RM (+0.0004). Speed map barrier / going cell corrections worse (+0.005 alone).
+      Base: fitted mix (dt180, ewm3, max5, ln runs) beats ewm7 alone (-0.029, top pick 26.3 vs 25.3%) but not inside Combo.
+      Dated WPR archive started (`pull_toprate.archive_wpr`, store `wpr_dated.csv.gz`, `wpr_asof`).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
