@@ -214,7 +214,7 @@ def five_states():
     p = p[p["race_id"].isin(ok.index[(ok.n >= 4) & (ok.w == 1) & (ok.ovr >= 1.08) & (ok.ovr <= 1.6)])]
     f = vl.facts(con, "2023-01-01")
     x = p.drop(columns=["state", "going_num"]).merge(f, on="run_id", how="left")
-    x["state"] = x["state"].fillna(p.set_index("run_id")["state"].reindex(x["run_id"]).to_numpy())
+    x["state"] = x["state"].fillna(pd.Series(p.set_index("run_id")["state"].reindex(x["run_id"]).to_numpy(), index=x.index))
     x["dist"] = x["dist"].fillna(x["distance"])
     inv = 1 / x["sp"]
     x["lsp"] = np.log(inv / inv.groupby(x["race_id"]).transform("sum"))
