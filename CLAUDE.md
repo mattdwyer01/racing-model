@@ -293,6 +293,8 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       adjustments add nothing on top of RM (+0.0004). Speed map barrier / going cell corrections worse (+0.005 alone).
       Base: fitted mix (dt180, ewm3, max5, ln runs) beats ewm7 alone (-0.029, top pick 26.3 vs 25.3%) but not inside Combo.
       Dated WPR archive started (`pull_toprate.archive_wpr`, store `wpr_dated.csv.gz`, `wpr_asof`).
+      ADOPTED (user, 4 Oct): Combo = 0.30 proj + 0.15 RM (6.843 x ln p, vs field) + 0.10 rating + 0.10 form + 0.35 Nett
+      (0.45 proj when no RM figure), lines 4 / 8 (TopRate PR #291, bet_log.py matches).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
