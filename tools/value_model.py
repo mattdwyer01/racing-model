@@ -145,5 +145,57 @@ def main():
     pd.DataFrame({"run_id": d["run_id"], **{k: P[k] for k in P}}).to_parquet(ROOT / "data/interim/value_model_scores.parquet")
 
 
+
+
+def fit_live():
+    """Refit the Proj value model through model/value_live.py (the code path the dashboard uses), check it walk-forward,
+    and write model/value_params.json (fit on every resulted race to date)."""
+    import json
+    import duckdb
+    from model import value_live as vl
+    con = duckdb.connect(str(ROOT / "data/db/racing.duckdb"), read_only=True)
+    p = pd.read_parquet(ROOT / "data/interim/pace_leader_oos.parquet")
+    p["run_id"] = p["run_id"].astype(str)
+    p = p[(p["race_date"] < "2026-10-01") & p["won"].notna() & (p["sp"] > 1)].copy()
+    p["won"] = p["won"].astype(int)
+    ok = p.groupby("race_id").agg(n=("run_id", "size"), w=("won", "sum"), ovr=("sp", lambda s: (1 / s).sum()))
+    p = p[p["race_id"].isin(ok.index[(ok.n >= 4) & (ok.w == 1) & (ok.ovr >= 1.08) & (ok.ovr <= 1.6)])]
+    f = vl.facts(con, "2023-01-01")
+    x = p.drop(columns=["state", "going_num"]).merge(f, on="run_id", how="left")
+    x["dist"] = x["dist"].fillna(x["distance"])
+    inv = 1 / x["sp"]
+    x["lsp"] = np.log(inv / inv.groupby(x["race_id"]).transform("sum"))
+    adj = x["proj_adj"].fillna(0) + x["bias_adj"].fillna(0)
+    adj_r = adj - adj.groupby(x["race_id"]).transform("mean")
+    thr = {"sm": float(adj_r.quantile(0.82)), "bias": float(x["bias_adj"].quantile(0.8)),
+           "gps": float(x["last_gps_rel"].quantile(0.8)), "l600": float(x["last_l600_rel"].quantile(0.2))}
+    x = vl.design(x, thr).sort_values(["race_id", "run_id"]).reset_index(drop=True)
+    x["year"] = pd.to_datetime(x["race_date"]).dt.year
+    x["p_ctl"] = x.groupby(pd.cut(x["sp"], [1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8, 10, 15, 25, 50, 1000]), observed=True)["won"].transform("mean")
+    pr, _ = walk(x, vl.COLS)
+    sp_only, _ = walk(x, ["lsp"])
+    te = x["year"] >= 2024
+    w = (x["won"] == 1) & te
+    dll = (-np.log(pr[w].clip(1e-12)) + np.log(sp_only[w].clip(1e-12))).to_numpy()
+    v = pr * x["sp"]
+    L = [f"## Live pipeline check (model/value_live.py, apprentice = claimed in the last 120 days)", "",
+         f"- Walk-forward log loss vs SP only: {ci_mean(dll)}.", "",
+         "| value cut | bets | A/E pm | ROI % | 95% | 2024 | 2025 | 2026 |", "|---|---|---|---|---|---|---|---|"]
+    for cut in (1.0, 1.05):
+        b = x[te & (v >= cut) & (x["sp"] <= 21)]
+        yrs = [f"{100 * ((t['won'] * t['sp']).mean() - 1):+.1f}" for _, t in b.groupby("year")]
+        L.append(f"| {cut} | {len(b)} | {b['won'].sum() / b['p_ctl'].sum():.3f} | {100 * ((b['won'] * b['sp']).mean() - 1):+.1f} |"
+                 f" {roi_ci(b)} | " + " | ".join(yrs) + " |")
+    beta = clogit.fit(x[vl.COLS].to_numpy(float), pd.factorize(x["race_id"])[0], x["won"].to_numpy(), l2=1e-3)
+    params = {"fitted": str(pd.Timestamp.now())[:10], "train_from": "2023-01-01", "train_to": str(x["race_date"].max())[:10],
+              "races": int(x["race_id"].nunique()), "thresholds": thr, "beta": dict(zip(vl.COLS, map(float, beta)))}
+    vl.PARAMS.write_text(json.dumps(params, indent=1))
+    L += ["", "Final fit (all races): " + ", ".join(f"{c} {b:+.3f}" for c, b in zip(vl.COLS, beta)), "",
+          "Thresholds: " + ", ".join(f"{k} {v:.3f}" for k, v in thr.items()), ""]
+    with OUT.open("a") as fh:
+        fh.write("\n" + "\n".join(L) + "\n")
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
-    main()
+    fit_live() if "--fit-live" in sys.argv else main()

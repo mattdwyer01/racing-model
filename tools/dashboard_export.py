@@ -37,7 +37,7 @@ KEEP = ["race_id", "run_id", "race_date", "horse", "barrier", "jockey", "trainer
         "distance", "race_class", "going", "race_no", "settle", "P(leads)", "pace vs distance avg", "P(slow)",
         "P(even)", "P(fast)", "proj_gl_v4", "race-day adj", "projected rating", "rating vs field", "model %",
         "model $", "blend %", "blend $", "fixed_win_price", "open_price", "edge vs fixed", "pos value",
-        "pos flag"] + GROUPS
+        "pos flag", "vu", "vs"] + GROUPS
 
 RESULT_SQL = """
 select r.run_id, r.res_finish finish, r.res_margin_l margin, r.res_wpr wpr, r.sp, r.res_pos800 pos800,
@@ -178,6 +178,8 @@ def write_toprate(dest, rows, m, track):
             "l": f(x.get("P(leads)")), "g": f(x.get("proj_gl_v4")), "d": f(x.get("race-day adj")),
             "ab": f(x.get("ability")), "jt": f(x.get("jockey / trainer")), "pv": f(x.get("pos value")),
             "pf": 1 if str(x.get("pos flag")) in ("True", "1", "1.0") else 0,
+            # value model (model/value_live.py): p = softmax(vs x log p_price + vu) within the race
+            "vu": f(x.get("vu")), "vs": f(x.get("vs")),
             # rating breakdown (WPR points vs the field) for the runner detail popup
             "gb": {k: round(v, 2) for k in GROUPS if (v := f(x.get(k))) is not None and abs(v) >= 0.005}}
         rid = str(int(x["race_id"]))
