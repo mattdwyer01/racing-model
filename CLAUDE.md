@@ -347,6 +347,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
+    Upcoming entries were counted as a horse's previous start (5 Oct 2026): a horse entered on several upcoming days got
+    days_since_start / prep_run / last-start comments from its own earlier ENTRY (1,084 of 3,075 upcoming runners; "back
+    within 14 days" 60% vs 38% in history). Fixed in `build_core` (upcoming_ rows never a previous start) and
+    `value_live.facts`; past rows unchanged (10 of 1.36M). Race-day scores were mostly right already (earlier entries
+    have run or been scratched by then).
     `gps_link`, `extra_history.read_rq_sections`); TopRate results have no carried weight from 12 Sep 2026, so
     the latest races get no model output (`blend_eval` drops them and says so; `--report-only` rebuilds).
   - LightGBM runs are deterministic (`deterministic`, `force_row_wise`, fixed row order in `build_features`).

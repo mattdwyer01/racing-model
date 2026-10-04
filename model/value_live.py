@@ -67,11 +67,18 @@ def facts(con, out_from):
     for k, pat in STEW.items():
         r["cs_" + k] = stew.str.contains(pat, regex=True).astype(float)
     r["cs_every"] = vid.str.contains(EVERY, regex=True).astype(float)
-    r = r.sort_values(["horse_id", "race_date", "run_id"])
-    h = r.groupby("horse_id")
-    r["last_distance"] = h["distance"].shift(1)
-    for c in ["gps_rel", "l600_rel", "cs_wide", "cs_heldup", "cs_laid", "cs_vet", "cs_every"]:
-        r["last_" + c] = h[c].shift(1)
+    r = r.sort_values(["horse_id", "race_date", "run_id"]).reset_index(drop=True)
+    # last start = the latest earlier row that was actually run: an upcoming entry (no result, no SP, today or later) is
+    # never a horse's last start, so a horse entered on several upcoming days keeps its real last run
+    upcoming = r["res_finish"].isna() & r["res_won"].isna() & (r["race_date"] >= pd.Timestamp.today().normalize())
+    pos = pd.Series(np.where(upcoming, np.nan, np.arange(len(r))), index=r.index)
+    prev = pos.groupby(r["horse_id"]).transform(lambda s: s.shift(1).ffill())
+    ok = prev.notna()
+    idx = prev[ok].astype(int).to_numpy()
+    for c in ["distance", "gps_rel", "l600_rel", "cs_wide", "cs_heldup", "cs_laid", "cs_vet", "cs_every"]:
+        name = "last_distance" if c == "distance" else "last_" + c
+        r[name] = np.nan
+        r.loc[ok, name] = r[c].to_numpy()[idx]
     # sire progeny strike rates on earlier dates (wet 7+, 1600m+, all)
     r = r.sort_values("race_date")
     res = r[r["res_won"].notna()]

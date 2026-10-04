@@ -101,14 +101,23 @@ with base as (
   from tr_raw
 ),
 -- history is built over race starts only (trials are tracked separately below)
-starts as (
-  select b.*,
-    lag(race_date) over w prev_start_date,
-    lag(res_wpr)   over w prev_wpr,
-    lag(race_id)   over w prev_race_id,
-    row_number()   over w - 1 career_starts_in_data
+-- upcoming = an accepted runner in a race still to be run (no result, no SP, today or later). It is never anybody's
+-- "previous start": a horse entered on several upcoming days must not count its earlier entries as runs (5 Oct 2026:
+-- 60% of upcoming runners showed "back within 14 days" against 38% in history).
+starts0 as (
+  select b.*, (b.res_finish is null and b.sp is null and b.race_date >= current_date) upcoming_
   from base b where not is_trial_or_jumpout
-  window w as (partition by horse_id order by race_date, run_id)
+),
+starts as (
+  select * exclude (prev_),
+    prev_.d prev_start_date, prev_.w prev_wpr, prev_.r prev_race_id
+  from (
+    select *,
+      last_value(case when not upcoming_ then {{'d': race_date, 'w': res_wpr, 'r': race_id}} end ignore nulls) over wp prev_,
+      count(case when not upcoming_ then 1 end) over wp career_starts_in_data
+    from starts0
+    window wp as (partition by horse_id order by race_date, run_id rows between unbounded preceding and 1 preceding)
+  )
 ),
 starts2 as (
   select *, (race_date - prev_start_date) days_since_start,
@@ -117,13 +126,14 @@ starts2 as (
   from starts
 ),
 starts3 as (
-  select *, row_number() over (partition by horse_id, prep_no order by race_date, run_id) prep_run
+  select *, coalesce(count(case when not upcoming_ then 1 end) over (partition by horse_id, prep_no order by race_date, run_id
+                       rows between unbounded preceding and 1 preceding), 0) + 1 prep_run
   from starts2
 ),
 trials as (
   select horse_id, race_date trial_date from base where is_trial_or_jumpout
 )
-select s.* exclude (prep_no),
+select s.* exclude (prep_no, upcoming_),
   (select count(*) from trials t where t.horse_id = s.horse_id
      and t.trial_date < s.race_date and t.trial_date > coalesce(s.prev_start_date, date '1900-01-01')) trials_since_last_start,
   (select max(trial_date) from trials t where t.horse_id = s.horse_id and t.trial_date < s.race_date) last_trial_date
