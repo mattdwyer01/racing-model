@@ -279,6 +279,20 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
         sx_wet (settle vs race x going above 4) model alone -0.0001 (-0.0003 to -0.0000), blend -0.00002 (significant),
         every fold, 2026 -0.0004: ADOPTED (`offset_model._add_wet`, production COLS). Track leader correction (prior
         years, shrunk 150 races) +0.0009 alone (worse), blend QLD -0.0002 / VIC/SA +0.0002: not adopted.
+    - Combo reweighted again (4 Oct 2026, user: keep the TopRate rating low, it is mostly market): grid on pre-race values
+      (1,753 races) with rating fixed 0-70%: strike rate rises ~0.5 pts per 10% of rating (29.1% at 0, 33.1% at 70%);
+      value U-shaped (ROI -8% at 0, -12% to -14% at 20-50%, -10% at 70%). ADOPTED (TopRate PR #288): Combo = 0.45 proj
+      + 0.10 rating + 0.10 form factor + 0.35 wpr_nett (29.8% wins, = SP fav 53%, non-fav A/E pm 1.15, ROI -10%); lines
+      back to 4 / 8 (2.48 runners / 54% of winners inside 4, 4.86 / 80% inside 8); quinella / trifecta hit A/E vs SP
+      1.21 / 1.33 -> 1.11 / 1.22. Win rule 4+ clear on this mix: 251 bets, 42%, +3.5%. bet_log.py matches.
+    - Speed map favoured / unfavoured raised to +/-1 (was 0.5; TopRate PR #290: table colours, tiles, bet_log rules). Within 4,
+      SM >= 1 A/E pm 1.10 vs 1.07 at 0.5 (ROI -10% vs -14% at SP); win rule at SM >= 1: 179 bets, 42.5%, +6.9% (-15 to +29) vs
+      251, +3.5% at 0.5 (n.s.). Favoured horses within 4 that are not the top pick lose (-22%); over $5 -29%.
+    - Projection tests (`projection_improve.md`): RM in Combo (in place of the projection) top pick level (29.6 vs 29.7%),
+      win rule worse (-6% vs +7%), but +2.2 winners per 100 races inside the 4 line at the same runner count (exotics). Projection
+      adjustments add nothing on top of RM (+0.0004). Speed map barrier / going cell corrections worse (+0.005 alone).
+      Base: fitted mix (dt180, ewm3, max5, ln runs) beats ewm7 alone (-0.029, top pick 26.3 vs 25.3%) but not inside Combo.
+      Dated WPR archive started (`pull_toprate.archive_wpr`, store `wpr_dated.csv.gz`, `wpr_asof`).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
