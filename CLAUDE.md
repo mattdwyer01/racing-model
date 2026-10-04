@@ -326,7 +326,8 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       Volume (5 Oct): value cut below 1.0 loses at once (0.97 -4.1%, 0.95 -7.0%, 0.90 -9.9%); by class at 1.0: country +8.8%,
       provincial +11.5%, metro -7.4%, so the value log now includes bush meetings, price cap $51 (TopRate PR #293). NSW / WA
       (`tools/pace_leader_extra.py`, `value_model.py --five-states`): VIC/SA/QLD-fitted model on NSW 536 bets +2.5% (-14 to +19),
-      WA 122 bets -23%; a five-state fit is less stable (VIC/SA/QLD 2026 -22%). NSW added to the value log (PR #294), WA out.
+      WA 122 bets -23%; a five-state fit is less stable (VIC/SA/QLD 2026 -22%). NSW added to the value log (PR #294). WA and TAS added too (user decision, PRs #298 / #299; WA -23% in the
+      backtest, TAS untested); value_log.csv now has a state column.
     - Replacing Combo (`tools/rating_replace_test.py`, `rating_replace_test.md`, 1,753 pre-race races): top pick Combo 29.3%,
       RM + WPR Nett 29.5% (+0.2, -1.5 to +1.8), RM 29.1%, projection 26.6%, projection v2 (new base + Nett, fitted) 27.8%.
       Winners inside the 4 line at Combo's runner count: Combo 54.9%, RM + Nett 54.4%, projections 49-51%. Projection rework
