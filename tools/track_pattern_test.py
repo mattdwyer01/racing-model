@@ -7,7 +7,8 @@
 2. Stability: race-weighted mean pattern per cell (track; x distance band; x going band; x rail band; combinations),
    computed separately on even and odd years; correlation between the halves (cells with 10+ races in each half).
    Reliability gives the shrinkage: est = sum / (n + lambda), lambda = n_cell x (1 - r) / r at the median cell.
-3. Live-style test (walk-forward, 2024 to Sep 2026): term = cell pattern from PRIOR race days only x the runner's
+3. Live-style test (walk-forward, 2024 to Sep 2026): term = cell pattern vs the all-track pattern, from PRIOR race days
+   only, x the runner's
    expected settle share vs the field (mean of its last 5 settle shares, 0.5 if none) and barrier share vs the field.
    Added to the live Proj (proj_consistent_oos3 'win: consistent' = the 7-term recipe) with a weight fitted on the
    previous test year (conditional logit on who won); winners inside the 3 / 5 lines at matched runner counts and top
@@ -88,7 +89,12 @@ def prior_cell(w, keys, col, lam):
     d = w.groupby(keys + ["race_date"])[col].agg(["sum", "count"]).reset_index().sort_values(keys + ["race_date"])
     g = d.groupby(keys)
     d["cs"], d["cn"] = g["sum"].cumsum() - d["sum"], g["count"].cumsum() - d["count"]
-    d["est"] = d["cs"] / (d["cn"] + lam)
+    # deviation from the all-track pattern to date (winners come from forward almost everywhere: the speed map already
+    # carries that), shrunk toward 0 with lam
+    day = w.groupby("race_date")[col].agg(["sum", "count"]).sort_index()
+    glob = (day["sum"].cumsum() - day["sum"]) / (day["count"].cumsum() - day["count"]).clip(lower=1)
+    gl = d["race_date"].map(glob).fillna(0.0)
+    d["est"] = (d["cs"] - d["cn"] * gl) / (d["cn"] + lam)
     return d[keys + ["race_date", "est"]]
 
 
