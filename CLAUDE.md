@@ -348,6 +348,13 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       (sd x 1.12 to fix the narrow spread); racing_model.json `wp` / `ws`; TopRate Proj column = `wp` (Base + Adj kept equal to
       Proj, spread in the tooltip; TopRate PR #296). Local build: every upcoming runner filled, corr 0.91 with TopRate's projection,
       1.7 lower on average.
+    - Proj rebuild (6 Oct 2026, user: Rating 92.4 on a one-start maiden looked wrong; the Rating is a win chance on the WPR
+      scale, stretched by no-hopers). `tools/proj_rebuild_test.py`, `proj_rebuild_test.md` (38,310 races, walk-forward, lines
+      set per variant to hold the same runners): winners inside at 2.5 runners Proj 53.4%, front-weighted 54.0% (better every
+      year, MAE 6.48 vs 6.59), q60 53.8%, rel / sd upside / LambdaRank no gain; Rating 54.7%, SP 62.1%. ADOPTED: front weights
+      (x4 within 5 of the race's best WPR, x2 within 10) in `wpr_model`; Proj is the headline column with lines 2.3 / 5 (same
+      runners as Rating 4.5 / 9.5: 52.9% / 77.6% of winners vs 54.2% / 78.1%), Rating second (TopRate PR #305, bet_log.py uses
+      wp; win rule clear 2.3: ~same volume, -10.4% vs -9.1% at SP without the SM filter).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
