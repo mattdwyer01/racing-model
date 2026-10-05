@@ -359,6 +359,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       A/E 1.065; 2-3 band A/E 1.01, 5-6 band 0.97; outside 5 A/E 0.89 (ROI -37%). Win rule decoupled: 3+ clear (no FS, $2+)
       -7.6% at SP (3,695 bets; -7.9 / -7.3 by period) vs 2 clear -11.3%. Rt column removed, TopRate rating shown (PRs #306/#307).
       Then lines 3 / 5 (user decision, PR #308): inside 3 = 3.03 runners, 60.5% of winners, A/E 1.056.
+      Input review (`tools/proj_adj_test.py`, `proj_adj_test.md`): only ability (-1.06 pts inside 3 when dropped), form shape
+      (-0.43), race context (-0.35), prep (-0.28) clearly help; other groups +/-0.2 n.s. (kept); excuses / class-weight change add
+      nothing. WPR Nett reverse-engineered (R2 0.955): best of last 3 dominates, best of 5, last start, -0.5 per kg vs last
+      start; 0.7 Proj + 0.3 Nett +1.65 inside 3 (Apr-Oct 2026) but user said no Nett layer. ADOPTED (user, PR #309): Proj +
+      2 x (ln 1/fixed - field mean) on the dashboard and bet_log, lines 4 / 8 (SP backtest: top 31.6%, 2.77 / 4.95 runners, 62% /
+      83% of winners), win rule 4+ clear (3,554 bets, -8.1% at SP).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
