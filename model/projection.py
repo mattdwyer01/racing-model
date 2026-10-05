@@ -66,9 +66,13 @@ GL_X = ["barrier", "barrier_pct", "inside_faster", "proj_settle", "proj_settle_r
         "gps_n", "jockey_width", "field_n", "dist", "synth", "track_code", "rail_m", "td_bar_settle"] + SPEED
 BIAS = ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "bias_adj"]
 TD = ["tdx_settle", "tdx_perf"]
+# track bias by condition (6 Oct 2026): the track_bias recipe (long-run, past meetings only, shrunk to the global slope)
+# with the meetings split by distance band, going band and rail band at the same track
+CTX_BANDS = ["dist", "going", "rail"]
+CTX_BIAS = [f"cbx_{k}_{c}" for k in CTX_BANDS for c in ("settle", "bar")]
 SPEED_WIN = ["early_rank2", "wide_x_slow", "nb_diff_in", "nb_diff_out"]
 OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj"] + \
-    BIAS + TD + SPEED_WIN
+    BIAS + TD + SPEED_WIN + CTX_BIAS
 BIAS_LAMBDA_LONG, BIAS_LAMBDA_RECENT, BIAS_DAYS = 30.0, 10.0, 35
 TD_LAMBDA = 10.0
 GLOBALS = {}   # global slopes fitted on 2019-2021 (set by frame)
@@ -206,6 +210,7 @@ def frame(con, h=None):
     x["log_days"] = np.log1p(x["days_since_start"].fillna(0))
 
     x = track_bias(x)
+    x = ctx_bias(x)
     x = td_barrier(x)
     from model.ability import TRIAL_SQL
     x = x.merge(con.sql(TRIAL_SQL).df(), on="run_id", how="left")
@@ -264,6 +269,43 @@ def track_bias(x):
     x[cols] = x[cols].fillna(0.0)
     GLOBALS["bias"] = (gs, gb)
     return x
+
+
+def _band(x, k):
+    if k == "dist":
+        return pd.cut(x["dist"], [0, 1200, 1600, 9999], labels=["sprint", "mile", "stay"]).astype(str)
+    if k == "going":
+        return pd.cut(x["going_num"].fillna(4), [-1, 4, 6, 99], labels=["good", "soft", "heavy"]).astype(str)
+    return pd.cut(x["rail_m"].fillna(-1), [-2, -0.5, 0.5, 4.5, 99], labels=["na", "true", "out1_4", "out5"]).astype(str)
+
+
+def ctx_bias(x):
+    """Track bias by condition: as track_bias's long-run part, with each track's meetings split by distance band
+    (sprint <= 1200m / mile <= 1600m / staying), going band (good <= 4 / soft 5-6 / heavy 7+) or rail band (true /
+    out 1-4m / out 5m+). Per race and band key: settle and barrier slopes of (WPR - pre-race ability) from PAST race
+    days only, shrunk to the global slope, stored as deviations (cb_<band>_settle / cb_<band>_bar)."""
+    t = x.copy()
+    valid = (t["h_none"] == 0) & t["wpr"].notna() & t["y_settle"].notna()
+    t["res"] = t["wpr"] - t["h_wpr"]
+    for c in ["res", "y_settle", "barrier_pct"]:
+        v = t[c].where(valid)
+        t[c + "_dm"] = v - v.groupby(t["race_id"]).transform("mean")
+    t["sxy"], t["sxx"] = t["res_dm"] * t["y_settle_dm"], t["y_settle_dm"] ** 2
+    t["bxy"], t["bxx"] = t["res_dm"] * t["barrier_pct_dm"], t["barrier_pct_dm"] ** 2
+    for k in CTX_BANDS:
+        t["key"] = t["track"].astype(str) + "|" + _band(t, k)
+        m = t.groupby(["key", "race_date"])[["sxy", "sxx", "bxy", "bxx"]].sum().reset_index()
+        early = m["race_date"].dt.year.between(2019, 2021)
+        m = m.sort_values(["key", "race_date"]).reset_index(drop=True)
+        g = m.groupby("key")
+        for c, xy, xx in [("settle", "sxy", "sxx"), ("bar", "bxy", "bxx")]:
+            glob = m.loc[early, xy].sum() / m.loc[early, xx].sum()
+            cxy, cxx = g[xy].cumsum() - m[xy], g[xx].cumsum() - m[xx]
+            m[f"cb_{k}_{c}"] = cxy / (cxx + BIAS_LAMBDA_LONG) - glob * cxx / (cxx + BIAS_LAMBDA_LONG)
+        x["key"] = x["track"].astype(str) + "|" + _band(x, k)
+        x = x.merge(m[["key", "race_date", f"cb_{k}_settle", f"cb_{k}_bar"]], on=["key", "race_date"], how="left")
+        x[[f"cb_{k}_settle", f"cb_{k}_bar"]] = x[[f"cb_{k}_settle", f"cb_{k}_bar"]].fillna(0.0)
+    return x.drop(columns="key")
 
 
 def td_barrier(x):
@@ -393,6 +435,9 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     x["tbx_settle_long"], x["tbx_settle_recent"] = x["tb_settle_long"] * sd, x["tb_settle_recent"] * sd
     x["tbx_bar_long"], x["tbx_bar_recent"] = x["tb_bar_long"] * bd, x["tb_bar_recent"] * bd
     x["bias_adj"] = x["tbx_settle_long"] + x["tbx_bar_long"]
+    for k in CTX_BANDS:
+        if f"cb_{k}_settle" in x:
+            x[f"cbx_{k}_settle"], x[f"cbx_{k}_bar"] = x[f"cb_{k}_settle"] * sd, x[f"cb_{k}_bar"] * bd
     return x, r, extras
 
 
