@@ -355,6 +355,21 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       (x4 within 5 of the race's best WPR, x2 within 10) in `wpr_model`; Proj is the headline column with lines 2.3 / 5 (same
       runners as Rating 4.5 / 9.5: 52.9% / 77.6% of winners vs 54.2% / 78.1%), Rating second (TopRate PR #305, bet_log.py uses
       wp; win rule clear 2.3: ~same volume, -10.4% vs -9.1% at SP without the SM filter).
+      Lines 2 / 5 (6 Oct, user asked 2 or 3 / 5 or 6; `tools/proj_lines_test.py`): inside 2 = 2.25 runners, 50% of winners,
+      A/E 1.065; 2-3 band A/E 1.01, 5-6 band 0.97; outside 5 A/E 0.89 (ROI -37%). Win rule decoupled: 3+ clear (no FS, $2+)
+      -7.6% at SP (3,695 bets; -7.9 / -7.3 by period) vs 2 clear -11.3%. Rt column removed, TopRate rating shown (PRs #306/#307).
+      Then lines 3 / 5 (user decision, PR #308): inside 3 = 3.03 runners, 60.5% of winners, A/E 1.056.
+      Input review (`tools/proj_adj_test.py`, `proj_adj_test.md`): only ability (-1.06 pts inside 3 when dropped), form shape
+      (-0.43), race context (-0.35), prep (-0.28) clearly help; other groups +/-0.2 n.s. (kept); excuses / class-weight change add
+      nothing. WPR Nett reverse-engineered (R2 0.955): best of last 3 dominates, best of 5, last start, -0.5 per kg vs last
+      start; 0.7 Proj + 0.3 Nett +1.65 inside 3 (Apr-Oct 2026) but user said no Nett layer. ADOPTED (user, PR #309): Proj +
+      2 x (ln 1/fixed - field mean) on the dashboard and bet_log, lines 4 / 8 (SP backtest: top 31.6%, 2.77 / 4.95 runners, 62% /
+      83% of winners), win rule 4+ clear (3,554 bets, -8.1% at SP).
+      Race-day adjustment (6 Oct, user: race-day projection must add, age / sex / weight out; `tools/proj_rd_test.py`,
+      `proj_rd_test.md`): form model without both groups + fitted b x (proj_adj, lv_x, sx_wet) vs race mean (b on the later
+      25% of training vs the form residual; proj_adj 0.48-0.63): inside 3 +0.64 vs form (+0.45 to +0.82), +0.56 vs the old
+      recipe, inside 5 +0.04 n.s., top 28.7%. ADOPTED in `wpr_model.fit_live` / `predict` (racing_model.json `wr` = race-day
+      part, shown in the Proj tooltip, TopRate PR).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
