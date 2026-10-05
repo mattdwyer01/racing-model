@@ -390,6 +390,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       On top of live Proj (2024-26, weight fitted on the previous year, runner's last-5 settle share vs field): raw cell pattern
       -0.3 inside 3 (repeats "forward wins"); deviation from the all-track pattern +/-0.1 everywhere (n.s.). Real but adds no
       winners: cell spread is small (sd 0.05-0.08 of a field) and Proj's speed map already holds the general effect.
+      Settle precision (`tools/settle_test.py`, `settle_test.md`, 64,621 races walk-forward): v3 R2 0.330, Spearman 0.563,
+      leader leads 39.9%. Slow-away history +0.0004 R2, GPS 200m history 0.000, LambdaRank order model Spearman +0.0015 /
+      leader +0.2: no real gain. TopRate pre-race fields (Aug-Oct 2026 only) R2 0.272 -> 0.279, leader 39.1 -> 40.3%. The
+      per-horse spread model is well calibrated (predicted 0.13 -> actual mean miss 0.155; 0.27 -> 0.275). Scaling the live
+      race-day terms by (median spread / spread)^a, weights refitted on the previous year (2024-26): a 0.5 +0.22 inside 3
+      (+0.12 to +0.32), +0.19 inside 5 (+0.10 to +0.27); a 1 +0.10 / +0.16; a 2 -0.08 / +0.30 (a picked after seeing these).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
