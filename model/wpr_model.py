@@ -6,7 +6,7 @@ Per fold Y (fit on races before Y, score Y; VIC/SA/QLD as the baseline):
   inputs   the production logit's inputs (production.COLS: ability / form / race-day projection / jockey-trainer /
            comments / ground loss / leader value / wet form), the rating model's expected WPR (absolute and vs the
            field) and race context (distance, going, field size, state, field mean / max prior WPR and rating mu)
-  mean     LightGBM regression on the run's WPR (y_wpr), runners with a WPR only
+  mean     LightGBM regression on the run's WPR (y_wpr), runners with a WPR only, front-weighted (front_weights)
   spread   LightGBM on |residual| from a date holdout inside the training window (later 25%), x sqrt(pi / 2) = sd
   win %    Monte Carlo: WPR ~ Normal(mean, sd) per runner, P(highest), 4,000 draws per race
 Compared on the test year with the production Racing Model (same fold, same rows): WPR error (MAE / RMSE) against the
@@ -35,6 +35,13 @@ PARAMS = dict(objective="l2", learning_rate=0.05, num_leaves=63, min_data_in_lea
               seed=7)
 rng = np.random.default_rng(3)
 SD_SCALE = 1.12   # walk-forward test: 60% of runs within +/- 1 raw sd; x1.12 brings that to ~68% (normal)
+
+
+def front_weights(df):
+    """Training weights on runners near the front (6 Oct 2026, tools/proj_rebuild_test.py): x4 within 5 of the race's
+    best WPR, x2 within 10. Walk-forward: +0.6 winners per 100 races inside the 2.5-runner line, MAE 6.48 vs 6.59."""
+    gap = df.groupby("race_id")["y_wpr"].transform("max") - df["y_wpr"]
+    return np.where(gap <= 5, 4.0, np.where(gap <= 10, 2.0, 1.0))
 
 
 def add_mu_abs(rm, df):
@@ -83,11 +90,12 @@ def fold(con, y):
     cut = tr["race_date"].quantile(0.75)
     inner = lab & (tr["race_date"] <= cut)
     hold = lab & (tr["race_date"] > cut)
-    m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"]), 600)
+    w = pd.Series(front_weights(tr[lab]), index=tr.index[lab])
+    m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"], weight=w[inner[lab]]), 600)
     res = (tr.loc[hold, "y_wpr"] - m1.predict(tr.loc[hold, feats].astype(float))).abs()
     sp = dict(PARAMS, objective="l1")
     ms = lgb.train(sp, lgb.Dataset(tr.loc[hold, feats].astype(float), res), 300)
-    m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"]), 600)
+    m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"], weight=w), 600)
     te["wpr_mean"] = m.predict(te[feats].astype(float))
     te["wpr_sd"] = np.clip(ms.predict(te[feats].astype(float)) * np.sqrt(np.pi / 2), 2.0, 25.0)
     te["p_sim"] = sim_win(te["wpr_mean"].to_numpy(), te["wpr_sd"].to_numpy(), te["race"].to_numpy())
@@ -109,10 +117,11 @@ def fit_live(e, rm, train_end, years=3):
     lab = tr["y_wpr"].notna()
     cut = tr["race_date"].quantile(0.75)
     inner, hold = lab & (tr["race_date"] <= cut), lab & (tr["race_date"] > cut)
-    m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"]), 600)
+    w = pd.Series(front_weights(tr[lab]), index=tr.index[lab])
+    m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"], weight=w[inner[lab]]), 600)
     res = (tr.loc[hold, "y_wpr"] - m1.predict(tr.loc[hold, feats].astype(float))).abs()
     ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(tr.loc[hold, feats].astype(float), res), 300)
-    m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"]), 600)
+    m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"], weight=w), 600)
     return {"mean": m, "sd": ms, "feats": feats}
 
 
