@@ -384,6 +384,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       barrier: every one adds ~0 when left out (+/-0.06 winners per 100 races), weights mostly 0. Not adopted. Same run: live
       7-term core win-fitted +0.20 / +0.10 (n.s.), WPR-fitted +0.49 / +0.18, all win-fitted +0.55 / +0.05; run-to-run spread
       is large, so these gains are fragile. Robust: pos_chg (left out -0.37 inside 3, -0.45 to -0.28) and proj_adj.
+      Track pattern (user: bias = where you must settle to win at a track under its conditions; `tools/track_pattern_test.py`,
+      `track_pattern_test.md`, 100,217 races 2017 on): winner's settle share vs field per race is STABLE by cell (even vs
+      odd years r: track 0.71, x distance 0.69, x rail 0.59, x going 0.52, x dist x going 0.51, 4-way 0.41; barrier 0.17-0.37).
+      On top of live Proj (2024-26, weight fitted on the previous year, runner's last-5 settle share vs field): raw cell pattern
+      -0.3 inside 3 (repeats "forward wins"); deviation from the all-track pattern +/-0.1 everywhere (n.s.). Real but adds no
+      winners: cell spread is small (sd 0.05-0.08 of a field) and Proj's speed map already holds the general effect.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
