@@ -370,6 +370,15 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       25% of training vs the form residual; proj_adj 0.48-0.63): inside 3 +0.64 vs form (+0.45 to +0.82), +0.56 vs the old
       recipe, inside 5 +0.04 n.s., top 28.7%. ADOPTED in `wpr_model.fit_live` / `predict` (racing_model.json `wr` = race-day
       part, shown in the Proj tooltip, TopRate PR).
+      Consistent race-day adjustments (`tools/proj_consistent_test.py`, `proj_consistent_test.md` / `_test2.md`): every term
+      = WPR points vs race mean x weight >= 0. Weights fitted to the WPR run (NNLS on residual) do not add winners at the 5
+      line (all terms +0.31 / +0.01; pos_chg weight 1.3-1.75 yet leaving it out helps). Weights fitted to WHO WON (clogit on
+      the holdout: base + terms) work: 7-term core (proj_adj, pos_chg, trip_undo, lv_x, sx_wet, tbx_settle_recent,
+      tbx_bar_recent) vs form base +0.59 inside 3 (+0.38 to +0.83), +0.20 inside 5 (+0.01 to +0.39); core chosen after
+      seeing set 2 (mild selection). Long-run / distance / going / rail-band track bias, track x distance barrier, bar_chg,
+      style_x, posv_td add ~0. Note: form baselines differ ~0.2-0.4 between runs (GBM refits); compare within a run only.
+      ADOPTED in `wpr_model` (base without race-day / age-sex-weight / track-bias groups; RD_TERMS win-fitted live);
+      racing_model.json `pb` (base) and `pa` (each adjustment) for the runner popup.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
