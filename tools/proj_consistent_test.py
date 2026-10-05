@@ -3,6 +3,7 @@
     python -W ignore tools/proj_consistent_test.py            # walk-forward 2023 to 2026 -> reports/proj_consistent_test.md
     python -W ignore tools/proj_consistent_test.py --report   # rebuild from data/interim/proj_consistent_oos.parquet
     python -W ignore tools/proj_consistent_test.py --set2     # + trip_undo / style_x / posv_td -> proj_consistent_test2.md
+    python -W ignore tools/proj_consistent_test.py --set3     # track bias windows -> proj_consistent_test3.md
 
 One recipe for every adjustment: a term in WPR points vs the race mean (the runner's projected settle or barrier share vs
 the field x a slope learned from past races only), times a calibration weight b >= 0 fitted jointly (non-negative least
@@ -42,12 +43,19 @@ TB = production.GROUPS["track bias"]
 CUR = ["proj_adj", "lv_x", "sx_wet"]
 CONS = CUR + ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "tdx_perf"]
 ALL = CONS + projection.CTX_BIAS + projection.CHG
-if "--set2" in sys.argv:          # trip-neutral form, own running style, position value by track x distance
+if "--set3" in sys.argv:          # track bias windows (same rail 90 / 365 days / decayed, any rail 60 days) + live core
+    ALL = ["proj_adj", "pos_chg", "trip_undo", "lv_x", "sx_wet", "tbx_settle_recent", "tbx_bar_recent",
+           "tbx_settle_long", "tbx_bar_long"] + projection.TBW
+    CONS = ALL[:7]                # 'consistent' = the live 7-term core
+    OUT = ROOT / "reports/proj_consistent_test3.md"
+    OOS = ROOT / "data/interim/proj_consistent_oos3.parquet"
+elif "--set2" in sys.argv:          # trip-neutral form, own running style, position value by track x distance
     ALL = ALL + projection.SET2
     OUT = ROOT / "reports/proj_consistent_test2.md"
     OOS = ROOT / "data/interim/proj_consistent_oos2.parquet"
 BOOT = 1000
 TERMS = []
+LOO_REF = "win: all" if "--set3" in sys.argv else "all"   # leave-one-out rows compare with this
 
 
 def gbm(tr, feats):
@@ -116,10 +124,11 @@ def fold(con, y):
         c = fit_b(b2, [t for t in terms if t in tr])
         keep[name] = apply(te, base2, c)
         coefs.update({f"{name}:{k}": v for k, v in c.items()})
-    for t in ALL:
-        keep[f"all - {t}"] = apply(te, base2, fit_b(b2, [u for u in ALL if u != t and u in tr]))
     bw = b2.sort_values(["race_id", "run_id"])
     bw = bw[bw.groupby("race_id")["won"].transform("sum") == 1]
+    for t in ALL:                 # leave-one-out: win-fitted weights for set 3, WPR-fitted before
+        rest = [u for u in ALL if u != t and u in tr]
+        keep[f"all - {t}"] = apply(te, base2, fit_win(bw, rest) if "--set3" in sys.argv else fit_b(b2, rest))
     for name, terms in (("win: consistent", CONS), ("win: all", ALL)):
         c = fit_win(bw, [t for t in terms if t in tr])
         keep[name] = apply(te, base2, c)
@@ -149,7 +158,7 @@ def report(d, coefs=None):
     loo = [c for c in d if c.startswith("all - ")]
     rng = np.random.default_rng(1)
     ref = {"form": (inside(d, "form", 3.03), inside(d, "form", 4.62)),
-           "all": (inside(d, "all", 3.03), inside(d, "all", 4.62))}
+           "all": (inside(d, LOO_REF, 3.03), inside(d, LOO_REF, 4.62))}
     idx = rng.integers(0, len(ref["form"][0]), (BOOT, len(ref["form"][0])))
 
     def row(v, against):
