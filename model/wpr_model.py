@@ -128,6 +128,21 @@ DROP = (production.GROUPS["race-day projection"] + production.GROUPS["age / sex 
         production.GROUPS["track bias"])
 
 
+# confidence scaling (6 Oct 2026, tools/settle_test.py): each race-day term x (median settle spread / the horse's settle
+# spread) ^ 0.5, clipped 0.5-2. 2024-26 on top of the live recipe: +0.22 inside 3 (+0.12 to +0.32), +0.19 inside 5
+# (+0.10 to +0.27); 0.5 picked from 0 / 0.5 / 1 / 2 after seeing them.
+CONF_ALPHA = 0.5
+
+
+def _conf(df, med):
+    sd = df["proj_settle_sd"] if "proj_settle_sd" in df else pd.Series(med, index=df.index)
+    return np.clip((med / sd.fillna(med)) ** CONF_ALPHA, 0.5, 2.0)
+
+
+def _scaled(df, terms, med):
+    return df.reindex(columns=terms).astype(float).fillna(0.0).mul(_conf(df, med), axis=0)
+
+
 def _demean(df, cols):
     x = df.reindex(columns=cols).astype(float).fillna(0.0)
     return x - x.groupby(df["race_id"].to_numpy()).transform("mean")
@@ -138,7 +153,7 @@ def fit_win_weights(h, terms):
     terms = list(terms)
     h = h.sort_values(["race_id", "run_id"])
     while True:
-        X = np.c_[_demean(h, ["base"]).to_numpy(), _demean(h, terms).to_numpy()]
+        X = np.c_[_demean(h, ["base"]).to_numpy(), _demean(h, terms).to_numpy()]   # terms already confidence-scaled
         beta = clogit.fit(X, pd.factorize(h["race_id"])[0], h["won"].to_numpy())
         w = beta[1:] / beta[0]
         if (w >= 0).all() or not terms:
@@ -161,11 +176,14 @@ def fit_live(e, rm, train_end, years=3):
     h = tr[hold].copy()
     h["base"] = m1.predict(h[feats].astype(float))
     ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(h[feats].astype(float), (h["y_wpr"] - h["base"]).abs()), 300)
-    hw = h[h.groupby("race_id")["won"].transform("sum") == 1]
-    rd = fit_win_weights(hw, [t for t in RD_TERMS if t in tr])
+    hw = h[h.groupby("race_id")["won"].transform("sum") == 1].copy()
+    med = float(tr["proj_settle_sd"].median()) if "proj_settle_sd" in tr else 0.2
+    terms = [t for t in RD_TERMS if t in tr]
+    hw[terms] = _scaled(hw, terms, med)
+    rd = fit_win_weights(hw, terms)
     m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"], weight=w), 600)
     print("wpr_model race-day weights", {k: round(v, 3) for k, v in rd.items()}, flush=True)
-    return {"mean": m, "sd": ms, "feats": feats, "rd": rd}
+    return {"mean": m, "sd": ms, "feats": feats, "rd": rd, "settle_sd_med": med}
 
 
 def predict(wm, rows, rm):
@@ -178,7 +196,11 @@ def predict(wm, rows, rm):
     X = x[wm["feats"]].astype(float)
     sd = np.clip(wm["sd"].predict(X) * np.sqrt(np.pi / 2) * SD_SCALE, 2.0, 25.0)
     rd = {k: v for k, v in (wm.get("rd") or {}).items() if v > 0}
-    parts = _demean(x, list(rd)) * pd.Series(rd) if rd else pd.DataFrame(index=x.index)
+    if rd:
+        xs = x[["race_id"]].join(_scaled(x, list(rd), wm.get("settle_sd_med", 0.2)))
+        parts = _demean(xs, list(rd)) * pd.Series(rd)
+    else:
+        parts = pd.DataFrame(index=x.index)
     base = wm["mean"].predict(X)
     adj = parts.sum(1).to_numpy() if rd else np.zeros(len(x))
     pa = [json.dumps({RD_TERMS[k]: round(float(r[k]), 2) for k in rd}) for _, r in parts.iterrows()] if rd \

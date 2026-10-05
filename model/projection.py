@@ -84,7 +84,7 @@ CHG = ["pos_chg", "bar_chg"]
 SET2 = ["trip_undo", "style_x", "posv_td"]
 SPEED_WIN = ["early_rank2", "wide_x_slow", "nb_diff_in", "nb_diff_out"]
 OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj"] + \
-    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG + SET2 + TBW
+    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG + SET2 + TBW + ["proj_settle_sd"]
 BIAS_LAMBDA_LONG, BIAS_LAMBDA_RECENT, BIAS_DAYS = 30.0, 10.0, 35
 TD_LAMBDA = 10.0
 GLOBALS = {}   # global slopes fitted on 2019-2021 (set by frame)
@@ -499,6 +499,17 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
         x["proj_settle"] = _fit(x.loc[m, SETTLE_X], x.loc[m, "y_settle"]).predict(x[SETTLE_X].to_numpy(float)).clip(0, 1)
     else:
         x["proj_settle"] = np.asarray(settle_fn(x, train_end), float).clip(0, 1)
+    # per-horse uncertainty of the settle forecast (6 Oct 2026, tools/settle_test.py: well calibrated): an l1 model on
+    # |error| of a settle model fitted on the first 75% of training dates, scored on the rest
+    dates = x.loc[m, "race_date"]
+    cut = dates.quantile(0.75)
+    ma, mb = m & (x["race_date"] <= cut), m & (x["race_date"] > cut)
+    inner = _fit(x.loc[ma, SETTLE_X], x.loc[ma, "y_settle"])
+    err = (x.loc[mb, "y_settle"] - inner.predict(x.loc[mb, SETTLE_X].to_numpy(float))).abs()
+    sm = lgb.train(dict(objective="l1", num_leaves=31, learning_rate=0.05, min_data_in_leaf=200, verbose=-1,
+                        deterministic=True, force_row_wise=True, seed=7),
+                   lgb.Dataset(x.loc[mb, SETTLE_X].round(6).to_numpy(float), err.to_numpy(float)), 300)
+    x["proj_settle_sd"] = np.clip(sm.predict(np.round(x[SETTLE_X].to_numpy(float), 6)), 0.05, 0.5)
     if "old" in versions:
         x["proj_settle_old"] = _fit(x.loc[m, SETTLE_OLD], x.loc[m, "y_settle"]).predict(
             x[SETTLE_OLD].to_numpy(float)).clip(0, 1)
