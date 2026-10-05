@@ -358,6 +358,7 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       Lines 2 / 5 (6 Oct, user asked 2 or 3 / 5 or 6; `tools/proj_lines_test.py`): inside 2 = 2.25 runners, 50% of winners,
       A/E 1.065; 2-3 band A/E 1.01, 5-6 band 0.97; outside 5 A/E 0.89 (ROI -37%). Win rule decoupled: 3+ clear (no FS, $2+)
       -7.6% at SP (3,695 bets; -7.9 / -7.3 by period) vs 2 clear -11.3%. Rt column removed, TopRate rating shown (PRs #306/#307).
+      Then lines 3 / 5 (user decision, PR #308): inside 3 = 3.03 runners, 60.5% of winners, A/E 1.056.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
