@@ -12,6 +12,7 @@ Per fold Y (fit on races before Y, score Y; VIC/SA/QLD as the baseline):
 Compared on the test year with the production Racing Model (same fold, same rows): WPR error (MAE / RMSE) against the
 prior-average baseline (h_wpr), top pick win %, log loss (simulated chances and with one fitted scale on the mean).
 """
+import json
 import sys
 from pathlib import Path
 
@@ -107,13 +108,24 @@ def fold(con, y):
     return te[[c for c in keep if c in te]].assign(fold=y), imp
 
 
-# Proj recipe (6 Oct 2026, user: age / sex / weight out; the race-day projection must add winners): a front-weighted form
-# model without the race-day projection and age / sex / weight groups, plus an explicit race-day adjustment
-# b x (proj_adj, lv_x, sx_wet) vs the race mean, b fitted on the later 25% of the training window against the form
-# model's within-race residual. tools/proj_rd_test.py (38,310 races walk-forward): +0.64 winners per 100 races inside the
-# 3 line vs form alone (+0.45 to +0.82), +0.56 vs the old recipe; b proj_adj 0.48-0.63, lv_x 0.08-0.38, sx_wet -0.14-0.45.
-RD_TERMS = ["proj_adj", "lv_x", "sx_wet"]
-DROP = production.GROUPS["race-day projection"] + production.GROUPS["age / sex / weight"]
+# Proj recipe (6 Oct 2026; tools/proj_consistent_test.py --set2, proj_consistent_test2.md, 38,310 races walk-forward):
+# base = front-weighted form model WITHOUT the race-day projection, age / sex / weight and track bias groups; plus
+# race-day adjustments, every one applied the same way: a term in WPR points vs the race mean x a weight >= 0. The
+# weights are fitted to WHO WON (conditional logit on the later 25% of the training window: the base model fitted on
+# the first 75% plus the terms; WPR weight = term coefficient / base coefficient; negative weights dropped and refit).
+# This 7-term set vs the base alone: inside 3 +0.59 winners per 100 races (+0.38 to +0.83), inside 5 +0.20 (+0.01 to
+# +0.39). Weights fitted to the WPR run instead added nothing at the 5 line.
+RD_TERMS = {
+    "proj_adj": "Speed map (position, pace, ground)",
+    "pos_chg": "Position vs its usual",
+    "trip_undo": "Past trip luck",
+    "lv_x": "Leader value (pace)",
+    "sx_wet": "Wet track position",
+    "tbx_settle_recent": "Track bias: position (recent, same rail)",
+    "tbx_bar_recent": "Track bias: barrier (recent, same rail)",
+}
+DROP = (production.GROUPS["race-day projection"] + production.GROUPS["age / sex / weight"] +
+        production.GROUPS["track bias"])
 
 
 def _demean(df, cols):
@@ -121,8 +133,21 @@ def _demean(df, cols):
     return x - x.groupby(df["race_id"].to_numpy()).transform("mean")
 
 
+def fit_win_weights(h, terms):
+    """WPR weight per term from a conditional logit on who won (h: one winner per race, column 'base')."""
+    terms = list(terms)
+    h = h.sort_values(["race_id", "run_id"])
+    while True:
+        X = np.c_[_demean(h, ["base"]).to_numpy(), _demean(h, terms).to_numpy()]
+        beta = clogit.fit(X, pd.factorize(h["race_id"])[0], h["won"].to_numpy())
+        w = beta[1:] / beta[0]
+        if (w >= 0).all() or not terms:
+            return dict(zip(terms, w))
+        terms = [t for t, v in zip(terms, w) if v >= 0]
+
+
 def fit_live(e, rm, train_end, years=3):
-    """Live fit for the dashboard: form model, race-day coefficients and spread model on the last `years` of training
+    """Live fit for the dashboard: base (form) model, race-day weights and spread model on the last `years` of training
     rows (e = the production training frame, om.add_context(eval_set(raw)); rm = production rating model)."""
     end = pd.Timestamp(train_end)
     tr = production._race(e[(e["race_date"] < end) & (e["race_date"] >= end - pd.DateOffset(years=years))].copy())
@@ -134,30 +159,32 @@ def fit_live(e, rm, train_end, years=3):
     w = pd.Series(front_weights(tr[lab]), index=tr.index[lab])
     m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"], weight=w[inner[lab]]), 600)
     h = tr[hold].copy()
-    h["res"] = h["y_wpr"] - m1.predict(h[feats].astype(float))
-    ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(h[feats].astype(float), h["res"].abs()), 300)
-    terms = [t for t in RD_TERMS if t in tr]
-    r = (h["res"] - h.groupby("race_id")["res"].transform("mean")).to_numpy()
-    sw = np.sqrt(front_weights(h))
-    coef = np.linalg.lstsq(_demean(h, terms).to_numpy() * sw[:, None], r * sw, rcond=None)[0]
+    h["base"] = m1.predict(h[feats].astype(float))
+    ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(h[feats].astype(float), (h["y_wpr"] - h["base"]).abs()), 300)
+    hw = h[h.groupby("race_id")["won"].transform("sum") == 1]
+    rd = fit_win_weights(hw, [t for t in RD_TERMS if t in tr])
     m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"], weight=w), 600)
-    print("wpr_model race-day coefficients", dict(zip(terms, np.round(coef, 3))), flush=True)
-    return {"mean": m, "sd": ms, "feats": feats, "rd": dict(zip(terms, coef))}
+    print("wpr_model race-day weights", {k: round(v, 3) for k, v in rd.items()}, flush=True)
+    return {"mean": m, "sd": ms, "feats": feats, "rd": rd}
 
 
 def predict(wm, rows, rm):
-    """Projected WPR (form + race-day adjustment), its spread (sd) and the race-day part, for card rows (production
-    features, as race_card.prep builds them)."""
+    """Proj (base + race-day adjustments), its spread (sd), the base and each adjustment (WPR points vs the race), for
+    card rows (production features, as race_card.prep builds them)."""
     x = add_mu_abs(rm, rows.copy())
     for c in wm["feats"]:
         if c not in x:
             x[c] = np.nan
     X = x[wm["feats"]].astype(float)
     sd = np.clip(wm["sd"].predict(X) * np.sqrt(np.pi / 2) * SD_SCALE, 2.0, 25.0)
-    rd = wm.get("rd") or {}
-    adj = (_demean(x, list(rd)) * pd.Series(rd)).sum(1).to_numpy() if rd else np.zeros(len(x))
-    return pd.DataFrame({"run_id": x["run_id"].to_numpy(), "wpr_proj": wm["mean"].predict(X) + adj, "wpr_sd": sd,
-                         "wpr_rd": adj})
+    rd = {k: v for k, v in (wm.get("rd") or {}).items() if v > 0}
+    parts = _demean(x, list(rd)) * pd.Series(rd) if rd else pd.DataFrame(index=x.index)
+    base = wm["mean"].predict(X)
+    adj = parts.sum(1).to_numpy() if rd else np.zeros(len(x))
+    pa = [json.dumps({RD_TERMS[k]: round(float(r[k]), 2) for k in rd}) for _, r in parts.iterrows()] if rd \
+        else ["{}"] * len(x)
+    return pd.DataFrame({"run_id": x["run_id"].to_numpy(), "wpr_proj": base + adj, "wpr_sd": sd, "wpr_rd": adj,
+                         "wpr_base": base, "wpr_parts": pa})
 
 
 def ll(p, d):
