@@ -107,33 +107,57 @@ def fold(con, y):
     return te[[c for c in keep if c in te]].assign(fold=y), imp
 
 
+# Proj recipe (6 Oct 2026, user: age / sex / weight out; the race-day projection must add winners): a front-weighted form
+# model without the race-day projection and age / sex / weight groups, plus an explicit race-day adjustment
+# b x (proj_adj, lv_x, sx_wet) vs the race mean, b fitted on the later 25% of the training window against the form
+# model's within-race residual. tools/proj_rd_test.py (38,310 races walk-forward): +0.64 winners per 100 races inside the
+# 3 line vs form alone (+0.45 to +0.82), +0.56 vs the old recipe; b proj_adj 0.48-0.63, lv_x 0.08-0.38, sx_wet -0.14-0.45.
+RD_TERMS = ["proj_adj", "lv_x", "sx_wet"]
+DROP = production.GROUPS["race-day projection"] + production.GROUPS["age / sex / weight"]
+
+
+def _demean(df, cols):
+    x = df.reindex(columns=cols).astype(float).fillna(0.0)
+    return x - x.groupby(df["race_id"].to_numpy()).transform("mean")
+
+
 def fit_live(e, rm, train_end, years=3):
-    """Live fit for the dashboard: mean and spread models on the last `years` of training rows (e = the production
-    training frame, om.add_context(eval_set(raw)); rm = production rating model)."""
+    """Live fit for the dashboard: form model, race-day coefficients and spread model on the last `years` of training
+    rows (e = the production training frame, om.add_context(eval_set(raw)); rm = production rating model)."""
     end = pd.Timestamp(train_end)
     tr = production._race(e[(e["race_date"] < end) & (e["race_date"] >= end - pd.DateOffset(years=years))].copy())
     tr = add_mu_abs(rm, tr)
-    feats = [c for c in dict.fromkeys(production.COLS + production.MU + CTX) if c in tr]
+    feats = [c for c in dict.fromkeys(production.COLS + production.MU + CTX) if c in tr and c not in DROP]
     lab = tr["y_wpr"].notna()
     cut = tr["race_date"].quantile(0.75)
     inner, hold = lab & (tr["race_date"] <= cut), lab & (tr["race_date"] > cut)
     w = pd.Series(front_weights(tr[lab]), index=tr.index[lab])
     m1 = lgb.train(PARAMS, lgb.Dataset(tr.loc[inner, feats].astype(float), tr.loc[inner, "y_wpr"], weight=w[inner[lab]]), 600)
-    res = (tr.loc[hold, "y_wpr"] - m1.predict(tr.loc[hold, feats].astype(float))).abs()
-    ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(tr.loc[hold, feats].astype(float), res), 300)
+    h = tr[hold].copy()
+    h["res"] = h["y_wpr"] - m1.predict(h[feats].astype(float))
+    ms = lgb.train(dict(PARAMS, objective="l1"), lgb.Dataset(h[feats].astype(float), h["res"].abs()), 300)
+    terms = [t for t in RD_TERMS if t in tr]
+    r = (h["res"] - h.groupby("race_id")["res"].transform("mean")).to_numpy()
+    sw = np.sqrt(front_weights(h))
+    coef = np.linalg.lstsq(_demean(h, terms).to_numpy() * sw[:, None], r * sw, rcond=None)[0]
     m = lgb.train(PARAMS, lgb.Dataset(tr.loc[lab, feats].astype(float), tr.loc[lab, "y_wpr"], weight=w), 600)
-    return {"mean": m, "sd": ms, "feats": feats}
+    print("wpr_model race-day coefficients", dict(zip(terms, np.round(coef, 3))), flush=True)
+    return {"mean": m, "sd": ms, "feats": feats, "rd": dict(zip(terms, coef))}
 
 
 def predict(wm, rows, rm):
-    """Projected WPR and its spread (sd) for card rows (production features, as race_card.prep builds them)."""
+    """Projected WPR (form + race-day adjustment), its spread (sd) and the race-day part, for card rows (production
+    features, as race_card.prep builds them)."""
     x = add_mu_abs(rm, rows.copy())
     for c in wm["feats"]:
         if c not in x:
             x[c] = np.nan
     X = x[wm["feats"]].astype(float)
     sd = np.clip(wm["sd"].predict(X) * np.sqrt(np.pi / 2) * SD_SCALE, 2.0, 25.0)
-    return pd.DataFrame({"run_id": x["run_id"].to_numpy(), "wpr_proj": wm["mean"].predict(X), "wpr_sd": sd})
+    rd = wm.get("rd") or {}
+    adj = (_demean(x, list(rd)) * pd.Series(rd)).sum(1).to_numpy() if rd else np.zeros(len(x))
+    return pd.DataFrame({"run_id": x["run_id"].to_numpy(), "wpr_proj": wm["mean"].predict(X) + adj, "wpr_sd": sd,
+                         "wpr_rd": adj})
 
 
 def ll(p, d):

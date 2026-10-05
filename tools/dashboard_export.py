@@ -37,7 +37,7 @@ KEEP = ["race_id", "run_id", "race_date", "horse", "barrier", "jockey", "trainer
         "distance", "race_class", "going", "race_no", "settle", "P(leads)", "pace vs distance avg", "P(slow)",
         "P(even)", "P(fast)", "proj_gl_v4", "race-day adj", "projected rating", "rating vs field", "model %",
         "model $", "blend %", "blend $", "fixed_win_price", "open_price", "edge vs fixed", "pos value",
-        "pos flag", "vu", "vs", "signals", "wpr_proj", "wpr_sd"] + GROUPS
+        "pos flag", "vu", "vs", "signals", "wpr_proj", "wpr_sd", "wpr_rd"] + GROUPS
 
 RESULT_SQL = """
 select r.run_id, r.res_finish finish, r.res_margin_l margin, r.res_wpr wpr, r.sp, r.res_pos800 pos800,
@@ -183,7 +183,7 @@ def write_toprate(dest, rows, m, track):
             # value model (model/value_live.py): p = softmax(vs x log p_price + vu) within the race
             "vu": f(x.get("vu")), "vs": f(x.get("vs")),
             # WPR projection v2 (model/wpr_model.py): the WPR this horse should run, and its spread (sd)
-            "wp": f(x.get("wpr_proj")), "ws": f(x.get("wpr_sd")),
+            "wp": f(x.get("wpr_proj")), "ws": f(x.get("wpr_sd")), "wr": f(x.get("wpr_rd")),
             # value-model signal flags (model/value_live.signals), e.g. "f_wide|f_gps_ground|n_every_chance"
             "sg": (str(x.get("signals")) or None) if isinstance(x.get("signals"), str) and x.get("signals") else None,
             # rating breakdown (WPR points vs the field) for the runner detail popup
