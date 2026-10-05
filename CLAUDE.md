@@ -355,6 +355,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       (x4 within 5 of the race's best WPR, x2 within 10) in `wpr_model`; Proj is the headline column with lines 2.3 / 5 (same
       runners as Rating 4.5 / 9.5: 52.9% / 77.6% of winners vs 54.2% / 78.1%), Rating second (TopRate PR #305, bet_log.py uses
       wp; win rule clear 2.3: ~same volume, -10.4% vs -9.1% at SP without the SM filter).
+      Lines 2 / 5 (6 Oct, user asked 2 or 3 / 5 or 6; `tools/proj_lines_test.py`): inside 2 = 2.25 runners, 50% of winners,
+      A/E 1.065; 2-3 band A/E 1.01, 5-6 band 0.97; outside 5 A/E 0.89 (ROI -37%). Win rule decoupled: 3+ clear (no FS, $2+)
+      -7.6% at SP (3,695 bets; -7.9 / -7.3 by period) vs 2 clear -11.3%. Rt column removed, TopRate rating shown (PRs #306/#307).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
