@@ -47,6 +47,7 @@ if "--set2" in sys.argv:          # trip-neutral form, own running style, positi
     OUT = ROOT / "reports/proj_consistent_test2.md"
     OOS = ROOT / "data/interim/proj_consistent_oos2.parquet"
 BOOT = 1000
+TERMS = []
 
 
 def gbm(tr, feats):
@@ -63,7 +64,8 @@ def demean(df, cols):
 def holdout(tr, feats):
     cut = tr["race_date"].quantile(0.75)
     a, b = tr[tr["race_date"] <= cut], tr[(tr["race_date"] > cut) & tr["y_wpr"].notna()].copy()
-    b["res"] = b["y_wpr"] - gbm(a, feats).predict(b[feats].astype(float))
+    b["base"] = gbm(a, feats).predict(b[feats].astype(float))
+    b["res"] = b["y_wpr"] - b["base"]
     b["r"] = b["res"] - b.groupby("race_id")["res"].transform("mean")
     return b
 
@@ -74,6 +76,20 @@ def fit_b(b, terms, nonneg=True):
     y = b["r"].to_numpy() * sw
     coef = nnls(X, y)[0] if nonneg else np.linalg.lstsq(X, y, rcond=None)[0]
     return dict(zip(terms, coef))
+
+
+def fit_win(b, terms):
+    """Weights fitted to WHO WON: conditional logit on the holdout with the form base and the terms; WPR weight of a
+    term = its coefficient / the base's. Negative weights are dropped and the fit repeated (all weights >= 0)."""
+    from model import clogit
+    terms = list(terms)
+    while True:
+        X = np.c_[demean(b, ["base"]).to_numpy(), demean(b, terms).to_numpy()]
+        beta = clogit.fit(X, pd.factorize(b["race_id"])[0], b["won"].to_numpy())
+        w = beta[1:] / beta[0]
+        if (w >= 0).all() or not terms:
+            return dict(zip(terms, w))
+        terms = [t for t, v in zip(terms, w) if v >= 0]
 
 
 def apply(te, base, coef):
@@ -102,6 +118,18 @@ def fold(con, y):
         coefs.update({f"{name}:{k}": v for k, v in c.items()})
     for t in ALL:
         keep[f"all - {t}"] = apply(te, base2, fit_b(b2, [u for u in ALL if u != t and u in tr]))
+    bw = b2.sort_values(["race_id", "run_id"])
+    bw = bw[bw.groupby("race_id")["won"].transform("sum") == 1]
+    for name, terms in (("win: consistent", CONS), ("win: all", ALL)):
+        c = fit_win(bw, [t for t in terms if t in tr])
+        keep[name] = apply(te, base2, c)
+        coefs.update({f"{name}:{k}": v for k, v in c.items()})
+    # terms saved for fast refits (no GBM): holdout and test rows, base + every term vs the race mean
+    tt = [t for t in ALL if t in tr]
+    hz = pd.concat([bw[["race_id", "won"]], demean(bw, ["base"] + tt)], axis=1).assign(fold=y, part="holdout")
+    tz = pd.concat([te[["race_id", "won"]], demean(te.assign(base=base2), ["base"] + tt)], axis=1).assign(
+        fold=y, part="test", base_abs=base2)
+    TERMS.append(pd.concat([hz, tz], ignore_index=True))
     print(y, {k: round(v, 3) for k, v in coefs.items() if k.startswith("all:")}, flush=True)
     return keep.assign(fold=y), coefs
 
@@ -117,7 +145,7 @@ def inside(d, col, target):
 
 def report(d, coefs=None):
     d = d[d.groupby("race_id")["won"].transform("sum") == 1].copy()
-    main = ["form", "current", "consistent", "all"]
+    main = ["form", "current", "consistent", "all"] + [c for c in ("win: consistent", "win: all") if c in d]
     loo = [c for c in d if c.startswith("all - ")]
     rng = np.random.default_rng(1)
     ref = {"form": (inside(d, "form", 3.03), inside(d, "form", 4.62)),
@@ -158,6 +186,7 @@ def main():
     parts, coefs = zip(*[fold(con, y) for y in wm.FOLDS])
     d = pd.concat(parts, ignore_index=True)
     d.to_parquet(OOS)
+    pd.concat(TERMS, ignore_index=True).to_parquet(str(OOS).replace(".parquet", "_terms.parquet"))
     report(d, list(coefs))
 
 
