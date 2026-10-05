@@ -365,6 +365,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       start; 0.7 Proj + 0.3 Nett +1.65 inside 3 (Apr-Oct 2026) but user said no Nett layer. ADOPTED (user, PR #309): Proj +
       2 x (ln 1/fixed - field mean) on the dashboard and bet_log, lines 4 / 8 (SP backtest: top 31.6%, 2.77 / 4.95 runners, 62% /
       83% of winners), win rule 4+ clear (3,554 bets, -8.1% at SP).
+      REMOVED the same day (user: Proj must be the projected WPR, consistent with the actual WPR it is compared with):
+      lines back to 3 / 5, win rule 3+ clear (TopRate PR #314, bet_log.py matches). Popup rebuilt (headline, waterfall,
+      tiles; no model / blend / edge / signals; signals also gone from the table).
       Race-day adjustment (6 Oct, user: race-day projection must add, age / sex / weight out; `tools/proj_rd_test.py`,
       `proj_rd_test.md`): form model without both groups + fitted b x (proj_adj, lv_x, sx_wet) vs race mean (b on the later
       25% of training vs the form residual; proj_adj 0.48-0.63): inside 3 +0.64 vs form (+0.45 to +0.82), +0.56 vs the old
