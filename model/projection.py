@@ -449,12 +449,14 @@ def set2_terms(x, c):
     m["val"] = (m["cs"] + 50 * m["b"].map(gm)) / (m["cn"] + 50)
     pb = pd.cut(x["proj_settle"], bins, labels=False).fillna(-1)
     q = pd.DataFrame({"key": x["track"].astype(str) + "|" + _band(x, "dist"), "b": pb, "race_date": x["race_date"]})
+    q["b"] = q["b"].astype(int)
+    m["b"] = m["b"].astype(int)
     q["_i"] = np.arange(len(q))
     q = q.sort_values("race_date")
     m = m.sort_values("race_date")
     q = pd.merge_asof(q, m[["key", "b", "race_date", "val"]], on="race_date", by=["key", "b"],
                       allow_exact_matches=False).sort_values("_i")
-    v = q["val"].fillna(q["b"].map(gm)).fillna(0.0).to_numpy()
+    v = q["val"].fillna(q["b"].map(gm.rename(index=int))).fillna(0.0).to_numpy()
     x["posv_td"] = v - pd.Series(v, index=x.index).groupby(rid).transform("mean")
     x.drop(columns=["_trip", "_xy", "_xx"], inplace=True)
 
