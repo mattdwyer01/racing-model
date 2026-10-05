@@ -379,6 +379,11 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       style_x, posv_td add ~0. Note: form baselines differ ~0.2-0.4 between runs (GBM refits); compare within a run only.
       ADOPTED in `wpr_model` (base without race-day / age-sex-weight / track-bias groups; RD_TERMS win-fitted live);
       racing_model.json `pb` (base) and `pa` (each adjustment) for the runner popup.
+      Track bias windows (user: the 35-day same-rail recent bias exists in only 28% of races; long-run covers 95%;
+      `--set3`, `proj_consistent_test3.md`): same rail 90 / 365 days / decayed (half-life 180), any rail 60 days, settle and
+      barrier: every one adds ~0 when left out (+/-0.06 winners per 100 races), weights mostly 0. Not adopted. Same run: live
+      7-term core win-fitted +0.20 / +0.10 (n.s.), WPR-fitted +0.49 / +0.18, all win-fitted +0.55 / +0.05; run-to-run spread
+      is large, so these gains are fragile. Robust: pos_chg (left out -0.37 inside 3, -0.45 to -0.28) and proj_adj.
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in
