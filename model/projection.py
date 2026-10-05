@@ -73,9 +73,13 @@ CTX_BIAS = [f"cbx_{k}_{c}" for k in CTX_BANDS for c in ("settle", "bar")]
 # today vs the horse's own history (6 Oct 2026): pos_chg = usual settle share - projected settle share (positive = more
 # forward than usual); bar_chg = usual barrier share - today's (positive = drawn better than usual)
 CHG = ["pos_chg", "bar_chg"]
+# set 2 (6 Oct 2026): trip_undo = minus the horse's average past trip help (actual settle / pace / ground loss at the
+# fitted costs: undoes form flattered or hurt by past trips); style_x = the horse's own position preference x today's
+# projected position; posv_td = value of today's projected position bucket at this track and distance band
+SET2 = ["trip_undo", "style_x", "posv_td"]
 SPEED_WIN = ["early_rank2", "wide_x_slow", "nb_diff_in", "nb_diff_out"]
 OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj"] + \
-    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG
+    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG + SET2
 BIAS_LAMBDA_LONG, BIAS_LAMBDA_RECENT, BIAS_DAYS = 30.0, 10.0, 35
 TD_LAMBDA = 10.0
 GLOBALS = {}   # global slopes fitted on 2019-2021 (set by frame)
@@ -404,6 +408,57 @@ def cost_coef(x, mask):
     return dict(zip(["settle", "pace", "gl"], b[:3]))
 
 
+def _decayed(x, col):
+    v = _lags(x, col)
+    ok = ~np.isnan(v)
+    w = np.where(ok, 0.5 ** (np.arange(K) / 3.0), 0)
+    ws = w.sum(1)
+    return np.where(ws > 0, (w * np.nan_to_num(v)).sum(1) / np.where(ws > 0, ws, 1), np.nan), ws
+
+
+def set2_terms(x, c):
+    """trip_undo, style_x, posv_td (see SET2). Past runs only (lags / prior race days); x sorted by horse and date."""
+    rid = x["race_id"]
+    valid = x["y_settle"].notna() & x["wpr"].notna()
+    sdm = x["y_settle"] - x.groupby(rid)["y_settle"].transform("mean")
+    pace = x["y_shape"].fillna(0) * (1 - x["y_settle"])
+    pdm = pace - pace.groupby(rid).transform("mean")
+    gl = x["y_gl"].fillna(0)
+    gdm = gl - gl.groupby(rid).transform("mean")
+    x["_trip"] = (c["settle"] * sdm + c["pace"] * pdm + c["gl"] * gdm).where(valid)
+    th, _ = _decayed(x, "_trip")
+    tu = -np.nan_to_num(th)
+    x["trip_undo"] = tu - pd.Series(tu, index=x.index).groupby(rid).transform("mean")
+    # own position preference: shrunk slope of (WPR - pre-race ability) on settle share (forward = positive)
+    res = (x["wpr"] - x["h_wpr"]).where(valid & (x["h_none"] == 0))
+    fwd = (0.5 - x["y_settle"]).where(res.notna())
+    x["_xy"], x["_xx"] = res * fwd, fwd ** 2
+    xy, xx = _lags(x, "_xy"), _lags(x, "_xx")
+    slope = np.nansum(xy, 1) / (np.nansum(xx, 1) + 1.0)
+    st = slope * (0.5 - x["proj_settle"])
+    x["style_x"] = st - st.groupby(rid).transform("mean")
+    # position bucket value by track x distance band, from prior race days, shrunk to the all-track bucket value
+    bins = [-0.01, 0.15, 0.4, 0.7, 1.01]
+    t = pd.DataFrame({"key": x["track"].astype(str) + "|" + _band(x, "dist"), "race_date": x["race_date"],
+                      "b": pd.cut(x["y_settle"], bins, labels=False), "res": res - res.groupby(rid).transform("mean")})
+    t = t[t["res"].notna() & t["b"].notna()]
+    m = t.groupby(["key", "b", "race_date"])["res"].agg(["sum", "count"]).reset_index().sort_values(["key", "b", "race_date"])
+    gm = t.groupby("b")["res"].mean()
+    g = m.groupby(["key", "b"])
+    m["cs"], m["cn"] = g["sum"].cumsum() - m["sum"], g["count"].cumsum() - m["count"]
+    m["val"] = (m["cs"] + 50 * m["b"].map(gm)) / (m["cn"] + 50)
+    pb = pd.cut(x["proj_settle"], bins, labels=False).fillna(-1)
+    q = pd.DataFrame({"key": x["track"].astype(str) + "|" + _band(x, "dist"), "b": pb, "race_date": x["race_date"]})
+    q["_i"] = np.arange(len(q))
+    q = q.sort_values("race_date")
+    m = m.sort_values("race_date")
+    q = pd.merge_asof(q, m[["key", "b", "race_date", "val"]], on="race_date", by=["key", "b"],
+                      allow_exact_matches=False).sort_values("_i")
+    v = q["val"].fillna(q["b"].map(gm)).fillna(0.0).to_numpy()
+    x["posv_td"] = v - pd.Series(v, index=x.index).groupby(rid).transform("mean")
+    x.drop(columns=["_trip", "_xy", "_xx"], inplace=True)
+
+
 def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     """Fit on rows in [2019, train_end), predict all rows. Returns (x with OUT cols, race frame, extras).
     settle_fn(x, train_end) -> projected settle per row, replacing the v3 settle model (e.g. projection_v4.settle).
@@ -446,6 +501,7 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     x["tbx_settle_long"], x["tbx_settle_recent"] = x["tb_settle_long"] * sd, x["tb_settle_recent"] * sd
     x["tbx_bar_long"], x["tbx_bar_recent"] = x["tb_bar_long"] * bd, x["tb_bar_recent"] * bd
     x["bias_adj"] = x["tbx_settle_long"] + x["tbx_bar_long"]
+    set2_terms(x, c)
     x["pos_chg"] = x["st_mean"].fillna(x["proj_settle"]) - x["proj_settle"]
     x["bar_chg"] = x["bar_mean"].fillna(x["barrier_pct"]) - x["barrier_pct"]
     for k in CTX_BANDS:

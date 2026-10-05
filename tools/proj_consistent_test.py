@@ -2,6 +2,7 @@
 
     python -W ignore tools/proj_consistent_test.py            # walk-forward 2023 to 2026 -> reports/proj_consistent_test.md
     python -W ignore tools/proj_consistent_test.py --report   # rebuild from data/interim/proj_consistent_oos.parquet
+    python -W ignore tools/proj_consistent_test.py --set2     # + trip_undo / style_x / posv_td -> proj_consistent_test2.md
 
 One recipe for every adjustment: a term in WPR points vs the race mean (the runner's projected settle or barrier share vs
 the field x a slope learned from past races only), times a calibration weight b >= 0 fitted jointly (non-negative least
@@ -41,6 +42,10 @@ TB = production.GROUPS["track bias"]
 CUR = ["proj_adj", "lv_x", "sx_wet"]
 CONS = CUR + ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "tdx_perf"]
 ALL = CONS + projection.CTX_BIAS + projection.CHG
+if "--set2" in sys.argv:          # trip-neutral form, own running style, position value by track x distance
+    ALL = ALL + projection.SET2
+    OUT = ROOT / "reports/proj_consistent_test2.md"
+    OOS = ROOT / "data/interim/proj_consistent_oos2.parquet"
 BOOT = 1000
 
 
