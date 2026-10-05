@@ -14,6 +14,7 @@ bias groups. Terms:
   track bias    tbx_settle_long, tbx_settle_recent (same rail, last 35 days), tbx_bar_long, tbx_bar_recent
   track x dist  tdx_perf (barrier at this track and distance)
   by condition  cbx_dist_* / cbx_going_* / cbx_rail_* (track bias split by distance band, going band, rail band)
+  vs own history  pos_chg (settling further forward than usual), bar_chg (drawn better than usual)
 Variants: 'current' (live: track bias inside the trees + speed map / leader value / wet settle), 'consistent' (all
 terms but the condition splits), 'all' (+ condition splits), and 'all - <term>' (each term left out).
 Scored: winners inside the line holding 3.03 / 4.62 runners a race, top pick %; race bootstrap vs 'form'.
@@ -39,7 +40,7 @@ ASW = production.GROUPS["age / sex / weight"]
 TB = production.GROUPS["track bias"]
 CUR = ["proj_adj", "lv_x", "sx_wet"]
 CONS = CUR + ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "tdx_perf"]
-ALL = CONS + projection.CTX_BIAS
+ALL = CONS + projection.CTX_BIAS + projection.CHG
 BOOT = 1000
 
 

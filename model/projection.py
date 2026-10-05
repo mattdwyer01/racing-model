@@ -70,9 +70,12 @@ TD = ["tdx_settle", "tdx_perf"]
 # with the meetings split by distance band, going band and rail band at the same track
 CTX_BANDS = ["dist", "going", "rail"]
 CTX_BIAS = [f"cbx_{k}_{c}" for k in CTX_BANDS for c in ("settle", "bar")]
+# today vs the horse's own history (6 Oct 2026): pos_chg = usual settle share - projected settle share (positive = more
+# forward than usual); bar_chg = usual barrier share - today's (positive = drawn better than usual)
+CHG = ["pos_chg", "bar_chg"]
 SPEED_WIN = ["early_rank2", "wide_x_slow", "nb_diff_in", "nb_diff_out"]
 OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj"] + \
-    BIAS + TD + SPEED_WIN + CTX_BIAS
+    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG
 BIAS_LAMBDA_LONG, BIAS_LAMBDA_RECENT, BIAS_DAYS = 30.0, 10.0, 35
 TD_LAMBDA = 10.0
 GLOBALS = {}   # global slopes fitted on 2019-2021 (set by frame)
@@ -173,6 +176,14 @@ def frame(con, h=None):
     g = x.groupby("race_id")
     den = (x["field_n"] - 1).clip(lower=1)
     x["barrier_pct"] = ((g["barrier"].rank(method="average") - 1) / den).fillna(0.5)
+    # the horse's usual barrier position (runs with a settle position only, so upcoming entries never count), weighted
+    # like st_mean: lets the race-day adjustment see a horse drawn better or worse than usual (bar_chg)
+    x["_bp_run"] = x["barrier_pct"].where(x["y_settle"].notna())
+    b = _lags(x, "_bp_run")
+    okb = ~np.isnan(b)
+    wb = np.where(okb, 0.5 ** (np.arange(K) / 3.0), 0)
+    x["bar_mean"] = np.where(wb.sum(1) > 0, (wb * np.nan_to_num(b)).sum(1) / np.where(wb.sum(1) > 0, wb.sum(1), 1), np.nan)
+    x = x.drop(columns="_bp_run")
     st_fill = x["st_mean"].fillna(0.5)
     x["settle_rank"] = (_rank(st_fill, x["race_id"]) - 1) / den
     he = x["h_s_early"].where(x["h_none"] == 0)
@@ -435,6 +446,8 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     x["tbx_settle_long"], x["tbx_settle_recent"] = x["tb_settle_long"] * sd, x["tb_settle_recent"] * sd
     x["tbx_bar_long"], x["tbx_bar_recent"] = x["tb_bar_long"] * bd, x["tb_bar_recent"] * bd
     x["bias_adj"] = x["tbx_settle_long"] + x["tbx_bar_long"]
+    x["pos_chg"] = x["st_mean"].fillna(x["proj_settle"]) - x["proj_settle"]
+    x["bar_chg"] = x["bar_mean"].fillna(x["barrier_pct"]) - x["barrier_pct"]
     for k in CTX_BANDS:
         if f"cb_{k}_settle" in x:
             x[f"cbx_{k}_settle"], x[f"cbx_{k}_bar"] = x[f"cb_{k}_settle"] * sd, x[f"cb_{k}_bar"] * bd
