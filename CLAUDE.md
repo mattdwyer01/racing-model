@@ -365,6 +365,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       start; 0.7 Proj + 0.3 Nett +1.65 inside 3 (Apr-Oct 2026) but user said no Nett layer. ADOPTED (user, PR #309): Proj +
       2 x (ln 1/fixed - field mean) on the dashboard and bet_log, lines 4 / 8 (SP backtest: top 31.6%, 2.77 / 4.95 runners, 62% /
       83% of winners), win rule 4+ clear (3,554 bets, -8.1% at SP).
+      REMOVED the same day (user: Proj must be the projected WPR, consistent with the actual WPR it is compared with):
+      lines back to 3 / 5, win rule 3+ clear (TopRate PR #314, bet_log.py matches). Popup rebuilt (headline, waterfall,
+      tiles; no model / blend / edge / signals; signals also gone from the table).
       Race-day adjustment (6 Oct, user: race-day projection must add, age / sex / weight out; `tools/proj_rd_test.py`,
       `proj_rd_test.md`): form model without both groups + fitted b x (proj_adj, lv_x, sx_wet) vs race mean (b on the later
       25% of training vs the form residual; proj_adj 0.48-0.63): inside 3 +0.64 vs form (+0.45 to +0.82), +0.56 vs the old
@@ -379,6 +382,23 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
       style_x, posv_td add ~0. Note: form baselines differ ~0.2-0.4 between runs (GBM refits); compare within a run only.
       ADOPTED in `wpr_model` (base without race-day / age-sex-weight / track-bias groups; RD_TERMS win-fitted live);
       racing_model.json `pb` (base) and `pa` (each adjustment) for the runner popup.
+      Track bias windows (user: the 35-day same-rail recent bias exists in only 28% of races; long-run covers 95%;
+      `--set3`, `proj_consistent_test3.md`): same rail 90 / 365 days / decayed (half-life 180), any rail 60 days, settle and
+      barrier: every one adds ~0 when left out (+/-0.06 winners per 100 races), weights mostly 0. Not adopted. Same run: live
+      7-term core win-fitted +0.20 / +0.10 (n.s.), WPR-fitted +0.49 / +0.18, all win-fitted +0.55 / +0.05; run-to-run spread
+      is large, so these gains are fragile. Robust: pos_chg (left out -0.37 inside 3, -0.45 to -0.28) and proj_adj.
+      Track pattern (user: bias = where you must settle to win at a track under its conditions; `tools/track_pattern_test.py`,
+      `track_pattern_test.md`, 100,217 races 2017 on): winner's settle share vs field per race is STABLE by cell (even vs
+      odd years r: track 0.71, x distance 0.69, x rail 0.59, x going 0.52, x dist x going 0.51, 4-way 0.41; barrier 0.17-0.37).
+      On top of live Proj (2024-26, weight fitted on the previous year, runner's last-5 settle share vs field): raw cell pattern
+      -0.3 inside 3 (repeats "forward wins"); deviation from the all-track pattern +/-0.1 everywhere (n.s.). Real but adds no
+      winners: cell spread is small (sd 0.05-0.08 of a field) and Proj's speed map already holds the general effect.
+      Settle precision (`tools/settle_test.py`, `settle_test.md`, 64,621 races walk-forward): v3 R2 0.330, Spearman 0.563,
+      leader leads 39.9%. Slow-away history +0.0004 R2, GPS 200m history 0.000, LambdaRank order model Spearman +0.0015 /
+      leader +0.2: no real gain. TopRate pre-race fields (Aug-Oct 2026 only) R2 0.272 -> 0.279, leader 39.1 -> 40.3%. The
+      per-horse spread model is well calibrated (predicted 0.13 -> actual mean miss 0.155; 0.27 -> 0.275). Scaling the live
+      race-day terms by (median spread / spread)^a, weights refitted on the previous year (2024-26): a 0.5 +0.22 inside 3
+      (+0.12 to +0.32), +0.19 inside 5 (+0.10 to +0.27); a 1 +0.10 / +0.16; a 2 -0.08 / +0.30 (a picked after seeing these).
     - NSW ATC sectionals feed: unreachable from GitHub-hosted runners (connect timeout; `reports/atc_probe.md`) and here;
       try the Vultr AU runner.
   - Data quirks found: store RQ GPS parquets have `tab_no` / `cum_dist_m` as strings (now coerced in

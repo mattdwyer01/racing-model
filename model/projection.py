@@ -66,6 +66,11 @@ GL_X = ["barrier", "barrier_pct", "inside_faster", "proj_settle", "proj_settle_r
         "gps_n", "jockey_width", "field_n", "dist", "synth", "track_code", "rail_m", "td_bar_settle"] + SPEED
 BIAS = ["tbx_settle_long", "tbx_settle_recent", "tbx_bar_long", "tbx_bar_recent", "bias_adj"]
 TD = ["tdx_settle", "tdx_perf"]
+# track bias windows (6 Oct 2026, user: the 35-day same-rail recent bias covers only 28% of races): (name, group keys,
+# window in days, half-life in days)
+TB_WINDOWS = [("r90", ["track", "rail"], 90, 9999), ("r365", ["track", "rail"], 365, 9999),
+              ("rdecay", ["track", "rail"], 99999, 180), ("any60", ["track"], 60, 9999)]
+TBW = [f"tbx_{c}_{n}" for n, *_ in TB_WINDOWS for c in ("settle", "bar")]
 # track bias by condition (6 Oct 2026): the track_bias recipe (long-run, past meetings only, shrunk to the global slope)
 # with the meetings split by distance band, going band and rail band at the same track
 CTX_BANDS = ["dist", "going", "rail"]
@@ -79,7 +84,7 @@ CHG = ["pos_chg", "bar_chg"]
 SET2 = ["trip_undo", "style_x", "posv_td"]
 SPEED_WIN = ["early_rank2", "wide_x_slow", "nb_diff_in", "nb_diff_out"]
 OUT = ["barrier_pct", "proj_settle", "proj_settle_rank", "proj_shape", "proj_pace", "proj_gl", "proj_adj"] + \
-    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG + SET2
+    BIAS + TD + SPEED_WIN + CTX_BIAS + CHG + SET2 + TBW + ["proj_settle_sd"]
 BIAS_LAMBDA_LONG, BIAS_LAMBDA_RECENT, BIAS_DAYS = 30.0, 10.0, 35
 TD_LAMBDA = 10.0
 GLOBALS = {}   # global slopes fitted on 2019-2021 (set by frame)
@@ -241,6 +246,23 @@ def frame(con, h=None):
     return x
 
 
+def _window_bias(m, keys, xy, xx, glob, window, halflife, lam=BIAS_LAMBDA_RECENT):
+    """Per meeting: slope from PRIOR meetings in the same group (keys) within `window` days, each weighted
+    0.5 ** (age / halflife), shrunk to the global slope (lam), stored as the deviation from it."""
+    out = np.zeros(len(m))
+    for _, idx in m.groupby(keys).indices.items():
+        d = m["race_date"].to_numpy()[idx].astype("datetime64[D]").astype(np.int64)
+        o = np.argsort(d, kind="stable")
+        ii, dd = idx[o], d[o]
+        a, b = m[xy].to_numpy()[ii], m[xx].to_numpy()[ii]
+        for j in range(1, len(ii)):
+            age = dd[j] - dd[:j]
+            w = np.where((age > 0) & (age <= window), 0.5 ** (age / halflife), 0.0)
+            sxy, sxx = (w * a[:j]).sum(), (w * b[:j]).sum()
+            out[ii[j]] = sxy / (sxx + lam) - glob * sxx / (sxx + lam)
+    return out
+
+
 def track_bias(x):
     """Settle and barrier bias at each track from PAST meetings only.
 
@@ -279,7 +301,10 @@ def track_bias(x):
             (m["race_date"] - gr["race_date"].shift(2)).dt.days <= 2 * BIAS_DAYS, 0)
         rec = rxy / (rxx + BIAS_LAMBDA_RECENT) - glob * rxx / (rxx + BIAS_LAMBDA_RECENT)
         m[f"tb_{c}_recent"] = rec.where(gap <= BIAS_DAYS, 0.0).fillna(0.0)
-    cols = ["tb_settle_long", "tb_settle_recent", "tb_bar_long", "tb_bar_recent"]
+        for name, keys, window, hl in TB_WINDOWS:
+            m[f"tb_{c}_{name}"] = _window_bias(m, keys, xy, xx, glob, window, hl)
+    cols = ["tb_settle_long", "tb_settle_recent", "tb_bar_long", "tb_bar_recent"] + \
+        [f"tb_{c}_{n}" for c in ("settle", "bar") for n, *_ in TB_WINDOWS]
     x = x.merge(m[["track", "race_date"] + cols], on=["track", "race_date"], how="left")
     x[cols] = x[cols].fillna(0.0)
     GLOBALS["bias"] = (gs, gb)
@@ -474,6 +499,17 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
         x["proj_settle"] = _fit(x.loc[m, SETTLE_X], x.loc[m, "y_settle"]).predict(x[SETTLE_X].to_numpy(float)).clip(0, 1)
     else:
         x["proj_settle"] = np.asarray(settle_fn(x, train_end), float).clip(0, 1)
+    # per-horse uncertainty of the settle forecast (6 Oct 2026, tools/settle_test.py: well calibrated): an l1 model on
+    # |error| of a settle model fitted on the first 75% of training dates, scored on the rest
+    dates = x.loc[m, "race_date"]
+    cut = dates.quantile(0.75)
+    ma, mb = m & (x["race_date"] <= cut), m & (x["race_date"] > cut)
+    inner = _fit(x.loc[ma, SETTLE_X], x.loc[ma, "y_settle"])
+    err = (x.loc[mb, "y_settle"] - inner.predict(x.loc[mb, SETTLE_X].to_numpy(float))).abs()
+    sm = lgb.train(dict(objective="l1", num_leaves=31, learning_rate=0.05, min_data_in_leaf=200, verbose=-1,
+                        deterministic=True, force_row_wise=True, seed=7),
+                   lgb.Dataset(x.loc[mb, SETTLE_X].round(6).to_numpy(float), err.to_numpy(float)), 300)
+    x["proj_settle_sd"] = np.clip(sm.predict(np.round(x[SETTLE_X].to_numpy(float), 6)), 0.05, 0.5)
     if "old" in versions:
         x["proj_settle_old"] = _fit(x.loc[m, SETTLE_OLD], x.loc[m, "y_settle"]).predict(
             x[SETTLE_OLD].to_numpy(float)).clip(0, 1)
@@ -503,6 +539,9 @@ def project(x, train_end, versions=("v2",), settle_fn=None, inplace=False):
     x["tbx_settle_long"], x["tbx_settle_recent"] = x["tb_settle_long"] * sd, x["tb_settle_recent"] * sd
     x["tbx_bar_long"], x["tbx_bar_recent"] = x["tb_bar_long"] * bd, x["tb_bar_recent"] * bd
     x["bias_adj"] = x["tbx_settle_long"] + x["tbx_bar_long"]
+    for n, *_ in TB_WINDOWS:
+        if f"tb_settle_{n}" in x:
+            x[f"tbx_settle_{n}"], x[f"tbx_bar_{n}"] = x[f"tb_settle_{n}"] * sd, x[f"tb_bar_{n}"] * bd
     set2_terms(x, c)
     x["pos_chg"] = x["st_mean"].fillna(x["proj_settle"]) - x["proj_settle"]
     x["bar_chg"] = x["bar_mean"].fillna(x["barrier_pct"]) - x["barrier_pct"]
