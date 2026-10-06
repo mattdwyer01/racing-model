@@ -104,7 +104,7 @@ MEET_CODE_QUERY = """query GetMeetCode_CD($venueName: String $date: String) {
 class Client:
     def __init__(self, delay: float = 1.0, endpoint: str = ENDPOINT, key_var: str = "RACINGCOM_API_KEY"):
         import requests
-        key = os.environ.get(key_var)
+        key = (os.environ.get(key_var) or "").strip()   # pasted secrets can carry a stray newline
         if not key:
             sys.exit(f"Set {key_var} first (the x-api-key value from the browser request).")
         self.s = requests.Session()
