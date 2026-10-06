@@ -41,8 +41,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   `python pipeline/store.py migrate mattdwyer01/racing-model` copies the old store across.
 - TopRate `gps_daily.yml` (06:00 AEST; moved from this repo 6 Oct 2026, checks out racing-model for the scrapers, needs TopRate
   secrets RACINGCOM_API_KEY / RACINGCOM_CAL_API_KEY, goes red if a source fails), `gps_backfill.yml` here (manual),
-  `tab_price_archive.yml` (Vultr runner). The racing.com keys were never set in Actions: VIC/SA GPS stopped at 23 Sep
-  (last PC run) until they are.
+  `tab_price_archive.yml` (Vultr runner). TopRate variable SCRAPER_RUNNER=self-hosted (Vultr box, virtualenv Python):
+  racing.com crawls from GitHub's runners (55+ min, killed), 4 min from Vultr. Keys were never set in Actions before
+  6 Oct, so VIC/SA stopped at 23 Sep; caught up 6 Oct (rc_days 16, 18 meetings, ~1.5 a day as usual).
 - GPS data lives in the TopRate repo (public, files in git) since 6 Oct 2026: `data/gps/{rq,rc}_gps_{runs,sections}_{year}.parquet`
   (`pipeline/gps_repo.py`; only changed years rewritten). `bootstrap.py`
   fetches and joins them into `data/interim/`; the store copies are frozen at the move (first run seeds from them).
