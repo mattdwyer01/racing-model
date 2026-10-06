@@ -18,7 +18,7 @@ python ingest/build_core.py        # rebuild only (raw files already in data/raw
 ```
 
 ## Automation (GitHub Actions)
-- `gps_daily.yml`: every morning, pulls the last week of RQ and racing.com GPS data and merges it into the TopRate repo (`data/gps/`, one parquet per file per year, `pipeline/gps_repo.py`).
+- GPS daily: runs in the TopRate repo (`.github/workflows/gps_daily.yml` there), using this repo's scrapers; merges into TopRate `data/gps/` (one parquet per file per year, `pipeline/gps_repo.py`).
 - `gps_backfill.yml`: manual, pulls full history (RQ from Oct 2022, racing.com from a chosen date).
 - `tab_price_archive.yml`: nightly, ships the Vultr box's TAB price log to the store (needs the Vultr runner).
 - Data store: assets on the `data` release. `python pipeline/store.py list` shows what's there.

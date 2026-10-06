@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Merge freshly parsed GPS files (work/new) into the TopRate repo's data/gps (one parquet per file per year) and push.
-# Used by the daily and backfill workflows. Needs a TopRate checkout at $TOPRATE_DIR (default: toprate) with push rights.
+# Used by TopRate's gps_daily.yml and this repo's gps_backfill.yml. Needs a TopRate checkout at $TOPRATE_DIR (default: toprate) with push rights.
 # The first run seeds data/gps from the data store (pipeline/gps_repo.py).
 set -euo pipefail
 top="${TOPRATE_DIR:-toprate}"
