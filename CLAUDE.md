@@ -39,9 +39,12 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
 - Data store = assets on the GitHub release tagged `data` (`pipeline/store.py`), not git. Store repo = variable
   `DATA_REPO` (private, e.g. `mattdwyer01/racing-data`) with secret `DATA_TOKEN`; falls back to this repo.
   `python pipeline/store.py migrate mattdwyer01/racing-model` copies the old store across.
-- `gps_daily.yml` (06:00 AEST), `gps_backfill.yml` (manual), `tab_price_archive.yml` (Vultr runner).
+- TopRate `gps_daily.yml` (06:00 AEST; moved from this repo 6 Oct 2026, checks out racing-model for the scrapers, needs TopRate
+  secrets RACINGCOM_API_KEY / RACINGCOM_CAL_API_KEY, goes red if a source fails), `gps_backfill.yml` here (manual),
+  `tab_price_archive.yml` (Vultr runner). The racing.com keys were never set in Actions: VIC/SA GPS stopped at 23 Sep
+  (last PC run) until they are.
 - GPS data lives in the TopRate repo (public, files in git) since 6 Oct 2026: `data/gps/{rq,rc}_gps_{runs,sections}_{year}.parquet`
-  (`pipeline/gps_repo.py`; daily job merges and pushes with TOPRATE_PUSH_TOKEN, only changed years rewritten). `bootstrap.py`
+  (`pipeline/gps_repo.py`; only changed years rewritten). `bootstrap.py`
   fetches and joins them into `data/interim/`; the store copies are frozen at the move (first run seeds from them).
 - `health_check.yml` (07:15 and 13:30 AEST): `tools/health_check.py` checks the served files (results fresh / final,
   weights, racing_model.json fresh + model self-check `health` from `race_card.model_health`, payload fresh / split /
