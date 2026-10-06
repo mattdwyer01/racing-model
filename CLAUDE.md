@@ -40,6 +40,9 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   `DATA_REPO` (private, e.g. `mattdwyer01/racing-data`) with secret `DATA_TOKEN`; falls back to this repo.
   `python pipeline/store.py migrate mattdwyer01/racing-model` copies the old store across.
 - `gps_daily.yml` (06:00 AEST), `gps_backfill.yml` (manual), `tab_price_archive.yml` (Vultr runner).
+- GPS data lives in the TopRate repo (public, files in git) since 6 Oct 2026: `data/gps/{rq,rc}_gps_{runs,sections}_{year}.parquet`
+  (`pipeline/gps_repo.py`; daily job merges and pushes with TOPRATE_PUSH_TOKEN, only changed years rewritten). `bootstrap.py`
+  fetches and joins them into `data/interim/`; the store copies are frozen at the move (first run seeds from them).
 - `health_check.yml` (07:15 and 13:30 AEST): `tools/health_check.py` checks the served files (results fresh / final,
   weights, racing_model.json fresh + model self-check `health` from `race_card.model_health`, payload fresh / split /
   weights, race-day adjustments). Fails the job and opens / comments on a "Data health" issue.

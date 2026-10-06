@@ -1,7 +1,7 @@
 name: GPS sectionals (daily)
 
-# Pulls new Triple S GPS data every morning and merges it into the data store
-# (assets on the `data` release): QLD from Racing Queensland's meeting ZIPs,
+# Pulls new Triple S GPS data every morning and merges it into the TopRate repo's data/gps
+# (one parquet per file per year; moved from the data store 6 Oct 2026): QLD from Racing Queensland's meeting ZIPs,
 # VIC/SA from racing.com's API. Re-reads the last week each day because both
 # sites publish a few days after the race; duplicates are merged away.
 #
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write              # upload to the data release
+  contents: read               # writes go to TopRate (TOPRATE_PUSH_TOKEN)
 
 concurrency:
   group: gps-data              # never two jobs writing the store at once
@@ -52,9 +52,19 @@ jobs:
           python ingest/racingcom_sectionals.py fetch --recent-days 7 --raw-dir work/rc_raw
           python ingest/racingcom_sectionals.py parse --raw-dir work/rc_raw --out-dir work/new
 
-      - name: Merge into data store
+      - name: Check out the TopRate repo (data/gps only)
+        uses: actions/checkout@v4
+        with:
+          repository: mattdwyer01/toprate
+          token: ${{ secrets.TOPRATE_PUSH_TOKEN }}
+          path: toprate
+          fetch-depth: 1
+          sparse-checkout: data/gps/
+          sparse-checkout-cone-mode: false
+
+      - name: Merge into TopRate data/gps
         run: bash pipeline/update_gps.sh
 
       - name: Clean up
         if: always()
-        run: rm -rf work store
+        run: rm -rf work store toprate

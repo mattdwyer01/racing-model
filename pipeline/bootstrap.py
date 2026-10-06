@@ -5,6 +5,8 @@
 
 Pulls every race_results_YYYY.csv.gz into data/raw/toprate/ and toprate_runners.csv
 into data/raw/live/, GPS parquets (rq_/rc_gps_*) and the git price history into data/interim/, then runs ingest/build_core.py.
+GPS comes from the TopRate repo (data/gps, pipeline/gps_repo.py) since 6 Oct 2026; the store copies (frozen at the
+move) are only used if that folder is missing.
 """
 import re
 import sys
@@ -28,8 +30,10 @@ def pull(force=False):
     for n in (LIVE, LIVE_ARCHIVE):
         if n in names:
             wanted[n] = ROOT / "data/raw/live" / n
+    from pipeline import gps_repo
+    gps_in_toprate = gps_repo.fetch(ROOT / "data/interim")
     for n in names:
-        if GPS.fullmatch(n):
+        if GPS.fullmatch(n) and not (gps_in_toprate and n.endswith(".parquet")):
             wanted[n] = ROOT / "data/interim" / n
     if not any(TOPRATE.fullmatch(n) for n in wanted):
         sys.exit("no TopRate yearly files in the store")

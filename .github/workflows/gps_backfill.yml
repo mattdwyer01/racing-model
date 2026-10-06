@@ -4,7 +4,7 @@ name: GPS sectionals (backfill)
 #   RQ:         every meeting ZIP on the RQ page (Oct 2022 on), ~25 min.
 #   racing.com: VIC/SA meetings from `from` to `to`, split into one job per year
 #               (each ~2 h, under GitHub's 6 h job limit), two at a time.
-# Safe to re-run: results are merged into the store, duplicates removed.
+# Safe to re-run: results are merged into TopRate data/gps, duplicates removed.
 
 on:
   workflow_dispatch:
@@ -100,7 +100,17 @@ jobs:
       - run: pip install -r requirements.txt
       - uses: actions/download-artifact@v4
         with: { pattern: gps-*, path: work/new }
-      - name: Merge into data store
+      - name: Check out the TopRate repo (data/gps only)
+        uses: actions/checkout@v4
+        with:
+          repository: mattdwyer01/toprate
+          token: ${{ secrets.TOPRATE_PUSH_TOKEN }}
+          path: toprate
+          fetch-depth: 1
+          sparse-checkout: data/gps/
+          sparse-checkout-cone-mode: false
+
+      - name: Merge into TopRate data/gps
         run: |
           # each artifact lands in work/new/<artifact>/ with sub-folders; bring its parquet files up to that level
           for d in work/new/gps-*; do find "$d" -mindepth 2 -name '*.parquet' -exec mv {} "$d"/ \; ; done
