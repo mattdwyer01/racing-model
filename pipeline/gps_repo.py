@@ -4,7 +4,7 @@
     python pipeline/gps_repo.py export TOPRATE_DIR OUT_DIR   # one parquet per name (data/interim layout)
     python pipeline/gps_repo.py fetch OUT_DIR                # download from GitHub (no checkout) and export
 
-Split by year (rq: race_date, rc: start_utc; rc sections take the year of their meeting in rc_gps_runs) so the daily
+Split by year (rq / atc: race_date, rc: start_utc; rc sections take the year of their meeting in rc_gps_runs) so the daily
 commit only rewrites the current year's files. A year file is written only when its rows change. The first update with
 no files in the repo seeds from the data store (pipeline/store.py), so nothing is lost in the move.
 """
@@ -27,8 +27,10 @@ KEYS = {
     "rq_gps_sections": ["race_code", "tab_no", "cum_dist_m"],
     "rc_gps_runs": ["meet_code", "race_no", "tab_no"],
     "rc_gps_sections": ["meet_code", "race_no", "tab_no", "from_m"],
+    "atc_gps_runs": ["meet_code", "race_no", "tab_no"],
+    "atc_gps_sections": ["meet_code", "race_no", "tab_no", "from_m"],
 }
-ORDER = ["rc_gps_runs", "rc_gps_sections", "rq_gps_runs", "rq_gps_sections"]   # rc runs first: sections need its years
+ORDER = ["rc_gps_runs", "rc_gps_sections", "rq_gps_runs", "rq_gps_sections", "atc_gps_runs", "atc_gps_sections"]   # rc runs first: sections need its years
 
 
 def _files(d: Path, name: str) -> list[Path]:
@@ -41,7 +43,7 @@ def load(d: Path, name: str) -> pd.DataFrame:
 
 
 def _years(df: pd.DataFrame, name: str, meet_year: pd.Series | None) -> pd.Series:
-    if name.startswith("rq_"):
+    if name.startswith(("rq_", "atc_")):
         return pd.to_datetime(df["race_date"]).dt.year
     if name == "rc_gps_runs":
         return pd.to_numeric(df["start_utc"].astype(str).str[:4], errors="coerce")
@@ -104,7 +106,7 @@ def update(top: Path, new_dir: Path) -> None:
         new = [pd.read_parquet(p) for p in sorted(new_dir.rglob(f"{name}.parquet")) if p.stat().st_size]
         old = load(d, name)
         seeded = False
-        if not len(old):
+        if not len(old) and not name.startswith("atc_"):   # atc never lived in the store: nothing to seed
             old, seeded = _seed(name), True
         if not new and not seeded:
             print(f"{name}: no new rows")
