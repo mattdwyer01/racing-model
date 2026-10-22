@@ -2,6 +2,8 @@ name: GPS sectionals (backfill)
 
 # One-off history pull. Run from the Actions tab -> "Run workflow".
 #   RQ:         every meeting ZIP on the RQ page (Oct 2022 on), ~25 min.
+#   atc:        NSW metro (Randwick, Rosehill, Canterbury, Warwick Farm) Swiss Timing PDFs from `atc_from`, one job per year.
+#               The feed is unreachable from GitHub-hosted runners: set repo variable SCRAPER_RUNNER (Vultr AU).
 #   racing.com: VIC/SA meetings from `from` to `to`, split into one job per year
 #               (each ~2 h, under GitHub's 6 h job limit), two at a time.
 # Safe to re-run: results are merged into TopRate data/gps, duplicates removed.
@@ -10,14 +12,17 @@ on:
   workflow_dispatch:
     inputs:
       source:
-        description: "rq, racingcom or both"
+        description: "rq, racingcom, atc or both (rq + racingcom) or all"
         default: both
       from:
         description: "racing.com start date"
         default: "2021-08-01"
       to:
-        description: "racing.com end date (blank = today)"
+        description: "racing.com / ATC end date (blank = today)"
         default: ""
+      atc_from:
+        description: "ATC start date (misses are cheap: the feed returns 404 for dates with no meeting)"
+        default: "2018-01-01"
 
 permissions:
   contents: write
@@ -27,21 +32,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       years: ${{ steps.p.outputs.years }}
+      atc_years: ${{ steps.p.outputs.atc_years }}
     steps:
       - id: p
         run: |
           python3 - <<'EOF' >> "$GITHUB_OUTPUT"
           import datetime, json
-          f = "${{ inputs.from }}"; t = "${{ inputs.to }}" or datetime.date.today().isoformat()
-          chunks = []
-          for y in range(int(f[:4]), int(t[:4]) + 1):
-              a = max(f, f"{y}-01-01"); b = min(t, f"{y}-12-31")
-              chunks.append({"from": a, "to": b})
-          print("years=" + json.dumps(chunks))
+          t = "${{ inputs.to }}" or datetime.date.today().isoformat()
+          for key, f in (("years", "${{ inputs.from }}"), ("atc_years", "${{ inputs.atc_from }}")):
+              chunks = []
+              for y in range(int(f[:4]), int(t[:4]) + 1):
+                  a = max(f, f"{y}-01-01"); b = min(t, f"{y}-12-31")
+                  chunks.append({"from": a, "to": b})
+              print(f"{key}=" + json.dumps(chunks))
           EOF
 
   rq:
-    if: inputs.source == 'rq' || inputs.source == 'both'
+    if: inputs.source == 'rq' || inputs.source == 'both' || inputs.source == 'all'
     runs-on: ${{ vars.SCRAPER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 120
     steps:
@@ -57,7 +64,7 @@ jobs:
 
   racingcom:
     needs: plan
-    if: inputs.source == 'racingcom' || inputs.source == 'both'
+    if: inputs.source == 'racingcom' || inputs.source == 'both' || inputs.source == 'all'
     runs-on: ${{ vars.SCRAPER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 350
     strategy:
@@ -84,9 +91,34 @@ jobs:
             work/rc_raw/_meet_codes.csv
           retention-days: 7
 
+  atc:
+    needs: plan
+    if: inputs.source == 'atc' || inputs.source == 'all'
+    runs-on: ${{ vars.SCRAPER_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 2           # be polite to the ATC feed
+      matrix:
+        chunk: ${{ fromJSON(needs.plan.outputs.atc_years) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: |
+          python ingest/atc_sectionals.py download --since ${{ matrix.chunk.from }} --until ${{ matrix.chunk.to }}
+          python ingest/atc_sectionals.py parse --out work/new/atc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gps-atc-${{ matrix.chunk.from }}
+          path: |
+            work/new/atc
+          retention-days: 7
+
   store:
-    needs: [rq, racingcom]
-    if: always() && (needs.rq.result == 'success' || needs.racingcom.result == 'success')
+    needs: [rq, racingcom, atc]
+    if: always() && (needs.rq.result == 'success' || needs.racingcom.result == 'success' || needs.atc.result == 'success')
     runs-on: ubuntu-latest
     concurrency: { group: gps-data, cancel-in-progress: false }
     env:

@@ -18,11 +18,19 @@ Structure: per-run performance figure -> current ability per horse -> race-day p
   runners file, Apr 2026 on) and `tools/extract_prices_from_git.py` (git history of toprate_runners.csv).
 - Punting Form: dropped (no lift over SP in testing, borrowed login).
 
-## Future sources (not built)
-- NSW metro (ATC) Swiss Timing sectional PDFs:
-  `feed.australianturfclub.com.au/sectionals/swiss-timing/{year}/{DDMM}{TRACK}-{race}.pdf` (e.g. `1909RAND-1.pdf`).
-  Per horse: DT-W (distance travelled vs winner, m), barrier, 200m cumulative times with positions,
-  splits, top speed. No rail distance.
+## Future sources
+- NSW metro (ATC) Swiss Timing sectional PDFs, parser BUILT (`ingest/atc_sectionals.py`), data not yet pulled:
+  `feed.australianturfclub.com.au/sectionals/swiss-timing/{year}/{DDMM}{TRACK}.pdf` (whole meeting, e.g. `1710RAND.pdf`)
+  or `{DDMM}{TRACK}-{race}.pdf` (per race, e.g. `1909RAND-1.pdf`). Tracks RAND, ROSE, CANT, WARW (Sydney metro only).
+  Per horse: DT-W (distance travelled vs winner, m), barrier, first 400m, last 600m, top speed; per 200m post the time
+  remaining, split and position. No rail distance. Tables `atc_gps_runs` (key meet_code, race_no, tab_no) and
+  `atc_gps_sections` (+ from_m) in TopRate `data/gps/` via `pipeline/gps_repo.py`. Parser checked on 1710RAND.pdf
+  (10 races, 108 runners, remaining - split chains reconcile, 0 problems). Feed is unreachable from GitHub-hosted runners
+  and the Claude sandbox: run on the Vultr AU runner (SCRAPER_RUNNER). Backfill: `gps_backfill.yml` source=atc.
+  Daily step for TopRate `gps_daily.yml` (after the racing.com step, `continue-on-error`, working-directory rm):
+  `python ingest/atc_sectionals.py download --since "$(date -u -d '10 days ago' +%F)"` then
+  `python ingest/atc_sectionals.py parse --out work/new`. Not joined into `gps_runs` / the model (no rail distance;
+  racing.com GPS showed no model gain): link by date + track + race_no + tab_no to TopRate when wanted.
 - WA sectional workbooks: times only, no distance travelled. Skip.
 
 ## Rules
